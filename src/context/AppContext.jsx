@@ -353,7 +353,7 @@ export function AppProvider({ children }) {
       getGroupMembers,
       getGroupMessages,
       getGroupTasks,
-      addMessage, addTask, toggleTask,
+      addMessage, voteOnPoll, toggleTodoItem, addTask, toggleTask,
       addGroup, joinSchool, registerSchool,
       updateSchool, regenerateCode,
       getUserById, canCreateTasks, canCreateGroups,
