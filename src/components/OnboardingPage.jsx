@@ -1,0 +1,123 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
+import './OnboardingPage.css';
+
+export default function OnboardingPage() {
+  const navigate = useNavigate();
+  const { registerSchool, joinSchool, currentUser } = useApp();
+
+  if (!currentUser) { navigate('/login'); return null; }
+
+  const [regForm, setRegForm] = useState({ name: '', address: '', type: 'Secondary' });
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState('');
+
+  const [joinCode, setJoinCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    if (!regForm.name.trim()) { setRegError('School name is required'); return; }
+    setRegLoading(true);
+    setRegError('');
+    await new Promise(r => setTimeout(r, 600));
+    registerSchool(regForm.name.trim(), regForm.address.trim(), regForm.type);
+    setRegLoading(false);
+    navigate('/app');
+  }
+
+  async function handleJoin(e) {
+    e.preventDefault();
+    if (!joinCode.trim()) { setJoinError('Please enter an invite code'); return; }
+    setJoinLoading(true);
+    setJoinError('');
+    await new Promise(r => setTimeout(r, 600));
+    const result = joinSchool(joinCode.trim());
+    setJoinLoading(false);
+    if (result.success) {
+      navigate('/app');
+    } else {
+      setJoinError(result.error);
+    }
+  }
+
+  return (
+    <div className="onboarding-page">
+      <div className="onboarding-header">
+        <h1>Welcome to TeamMate</h1>
+        <p>Get started by registering your school or joining one with an invite code.</p>
+      </div>
+
+      <div className="onboarding-cards">
+        <div className="onboarding-card">
+          <div className="ob-card-icon">🏫</div>
+          <h2>Register Your School</h2>
+          <p className="ob-card-desc">Set up a new school and become its owner.</p>
+
+          {regError && <div className="ob-error">{regError}</div>}
+
+          <form onSubmit={handleRegister} className="ob-form">
+            <div className="ob-field">
+              <label>School Name *</label>
+              <input
+                type="text"
+                value={regForm.name}
+                onChange={e => setRegForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. St. Mary's High School"
+              />
+            </div>
+            <div className="ob-field">
+              <label>School Address</label>
+              <input
+                type="text"
+                value={regForm.address}
+                onChange={e => setRegForm(f => ({ ...f, address: e.target.value }))}
+                placeholder="Street, City, State"
+              />
+            </div>
+            <div className="ob-field">
+              <label>School Type</label>
+              <select value={regForm.type} onChange={e => setRegForm(f => ({ ...f, type: e.target.value }))}>
+                <option value="Primary">Primary</option>
+                <option value="Secondary">Secondary</option>
+                <option value="College">College</option>
+              </select>
+            </div>
+            <button type="submit" className="ob-btn" disabled={regLoading}>
+              {regLoading ? <span className="ob-spinner" /> : 'Register School'}
+            </button>
+          </form>
+        </div>
+
+        <div className="onboarding-divider">
+          <span>or</span>
+        </div>
+
+        <div className="onboarding-card">
+          <div className="ob-card-icon">🔑</div>
+          <h2>Join a School</h2>
+          <p className="ob-card-desc">Enter an invite code shared by your school admin.</p>
+
+          {joinError && <div className="ob-error">{joinError}</div>}
+
+          <form onSubmit={handleJoin} className="ob-form">
+            <div className="ob-field">
+              <label>Invite Code *</label>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value)}
+                placeholder="e.g. x-123"
+              />
+            </div>
+            <button type="submit" className="ob-btn ob-btn-outline" disabled={joinLoading}>
+              {joinLoading ? <span className="ob-spinner ob-spinner-dark" /> : 'Join School'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

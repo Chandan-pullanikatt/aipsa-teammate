@@ -86,3 +86,101 @@ button {
     padding: 0 1.5rem;
   }
 }
+
+/* Shared form utilities used across app components */
+.ob-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ob-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #444444;
+}
+
+.ob-field input,
+.ob-field select {
+  padding: 0.7rem 0.875rem;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #1a1a1a;
+  background: #f8fafc;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.ob-field input:focus,
+.ob-field select:focus {
+  border-color: #1a5c3a;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(26, 92, 58, 0.1);
+}
+
+.ob-error {
+  background: #fef2f2;
+  color: #d32f2f;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+}
+
+.task-form-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.task-form-cancel {
+  background: transparent;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.task-form-cancel:hover { border-color: #999; }
+
+.task-form-submit {
+  background: #1a5c3a;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.6rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.task-form-submit:hover { background: #14492d; }
+
+.ob-btn {
+  background: #1a5c3a;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.ob-btn:hover:not(:disabled) { background: #14492d; }
+.ob-btn:disabled { opacity: 0.65; cursor: not-allowed; }

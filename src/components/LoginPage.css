@@ -220,6 +220,76 @@
   to { transform: rotate(360deg); }
 }
 
+/* Demo accounts panel */
+.demo-panel {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 1.5rem;
+  background: rgba(255,255,255,0.8);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.demo-panel-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.875rem;
+}
+
+.demo-accounts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.demo-acc-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.demo-acc-btn:hover {
+  background: #f0fdf4;
+  border-color: #1a5d3a;
+}
+
+.demo-acc-btn.demo-acc-new {
+  border-style: dashed;
+}
+
+.demo-role-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.role-owner   { background: #fef9ee; color: #b45309; }
+.role-teacher { background: #f0fdf4; color: #1a5c3a; }
+.role-manager { background: #eff6ff; color: #1d4ed8; }
+.role-staff   { background: #fdf4ff; color: #7e22ce; }
+.role-new     { background: #f1f5f9; color: #475569; }
+
+.demo-acc-email {
+  font-size: 0.82rem;
+  color: #374151;
+  font-family: monospace;
+}
+
 @media (max-width: 480px) {
   .login-card {
     padding: 2rem 1.5rem;
