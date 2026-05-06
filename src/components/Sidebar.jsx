@@ -1,17 +1,25 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import Modal from './Modal';
 import './Sidebar.css';
 
 export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
-  const { schools, getGroupsForUser, canCreateGroups, addGroup } = useApp();
+  const { schools, getGroupsForUser, canCreateGroups, addGroup, renameGroup, deleteGroup, getRoleInSchool } = useApp();
   const school = schools.find(s => s.id === schoolId);
   const groups = getGroupsForUser(schoolId);
   const canAdd = canCreateGroups(schoolId);
+  const isAdmin = canAdd; // same permission — Owner/Admin
 
-  const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newParent, setNewParent] = useState('');
+
+  // Rename state
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  // Delete confirm state
+  const [deletingId, setDeletingId] = useState(null);
 
   const topLevel = groups.filter(g => !g.parentId);
   const childrenOf = (pid) => groups.filter(g => g.parentId === pid);
@@ -22,22 +30,102 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     addGroup(schoolId, newName.trim(), newParent || null);
     setNewName('');
     setNewParent('');
-    setShowModal(false);
+    setShowAddModal(false);
+  }
+
+  function startRename(group, e) {
+    e.stopPropagation();
+    setRenamingId(group.id);
+    setRenameValue(group.name);
+    setDeletingId(null);
+  }
+
+  function submitRename(groupId) {
+    if (renameValue.trim()) renameGroup(groupId, renameValue.trim());
+    setRenamingId(null);
+  }
+
+  function handleRenameKey(e, groupId) {
+    if (e.key === 'Enter') submitRename(groupId);
+    if (e.key === 'Escape') setRenamingId(null);
+  }
+
+  function confirmDelete(groupId, e) {
+    e.stopPropagation();
+    setDeletingId(prev => (prev === groupId ? null : groupId));
+    setRenamingId(null);
+  }
+
+  function executeDelete(groupId) {
+    if (selectedGroupId === groupId) onSelectGroup(null);
+    // Also clear if a child group was selected
+    deleteGroup(groupId);
+    setDeletingId(null);
   }
 
   function GroupItem({ group, depth = 0 }) {
     const children = childrenOf(group.id);
     const isActive = selectedGroupId === group.id;
+    const isRenaming = renamingId === group.id;
+    const isDeleting = deletingId === group.id;
+
     return (
       <>
-        <button
-          className={`sidebar-group${isActive ? ' active' : ''}`}
-          style={{ paddingLeft: `${1 + depth * 1}rem` }}
-          onClick={() => onSelectGroup(group)}
+        <div
+          className={`sidebar-group-row${isActive ? ' active' : ''}${isDeleting ? ' deleting' : ''}`}
+          style={{ paddingLeft: `${0.75 + depth * 0.875}rem` }}
         >
           {depth > 0 && <span className="sidebar-indent-bar" />}
-          <span className="sidebar-group-name">{group.name}</span>
-        </button>
+
+          {isRenaming ? (
+            <input
+              className="sidebar-rename-input"
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onBlur={() => submitRename(group.id)}
+              onKeyDown={e => handleRenameKey(e, group.id)}
+              autoFocus
+              onClick={e => e.stopPropagation()}
+              maxLength={60}
+            />
+          ) : (
+            <button
+              className="sidebar-group-name-btn"
+              onClick={() => onSelectGroup(group)}
+              title={group.name}
+            >
+              {group.name}
+            </button>
+          )}
+
+          {isAdmin && !isRenaming && (
+            <div className="sidebar-group-actions">
+              <button
+                className="sg-action-btn"
+                onClick={e => startRename(group, e)}
+                title="Rename group"
+                aria-label="Rename"
+              >✏️</button>
+              <button
+                className={`sg-action-btn sg-delete-btn${isDeleting ? ' active' : ''}`}
+                onClick={e => confirmDelete(group.id, e)}
+                title="Delete group"
+                aria-label="Delete"
+              >🗑️</button>
+            </div>
+          )}
+        </div>
+
+        {isDeleting && (
+          <div className="sidebar-delete-confirm" style={{ paddingLeft: `${0.75 + depth * 0.875 + 0.5}rem` }}>
+            <span>Delete "{group.name}"?</span>
+            <div className="sdc-actions">
+              <button className="sdc-yes" onClick={() => executeDelete(group.id)}>Delete</button>
+              <button className="sdc-no" onClick={() => setDeletingId(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
         {children.map(child => (
           <GroupItem key={child.id} group={child} depth={depth + 1} />
         ))}
@@ -53,21 +141,21 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
 
       <div className="sidebar-groups">
         {topLevel.length === 0 && (
-          <p className="sidebar-empty">No groups yet.</p>
+          <p className="sidebar-empty">No groups yet.{canAdd ? ' Create one below.' : ''}</p>
         )}
         {topLevel.map(g => <GroupItem key={g.id} group={g} />)}
       </div>
 
       {canAdd && (
         <div className="sidebar-footer">
-          <button className="sidebar-add-btn" onClick={() => setShowModal(true)}>
+          <button className="sidebar-add-btn" onClick={() => setShowAddModal(true)}>
             + New Group
           </button>
         </div>
       )}
 
-      {showModal && (
-        <Modal title="Create Group" onClose={() => setShowModal(false)} width={400}>
+      {showAddModal && (
+        <Modal title="Create Group" onClose={() => setShowAddModal(false)} width={400}>
           <form onSubmit={handleAdd} className="sidebar-new-form">
             <div className="ob-field">
               <label>Group Name *</label>
@@ -76,6 +164,7 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="e.g. Science Lab"
+                maxLength={60}
                 autoFocus
               />
             </div>
@@ -89,8 +178,8 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
               </select>
             </div>
             <div className="task-form-actions" style={{ paddingTop: '0.5rem' }}>
-              <button type="button" className="task-form-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button type="submit" className="task-form-submit">Create</button>
+              <button type="button" className="task-form-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
+              <button type="submit" className="task-form-submit" disabled={!newName.trim()}>Create</button>
             </div>
           </form>
         </Modal>

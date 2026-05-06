@@ -78,11 +78,11 @@ export default function ReportsTab({ groupId }) {
           <h4>Completion Rate</h4>
           <div className="circle-wrap">
             <svg width="100" height="100" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" strokeWidth="10" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" strokeWidth="10" />
               <circle
                 cx="50" cy="50" r="40"
                 fill="none"
-                stroke="#1a5c3a"
+                stroke="var(--primary)"
                 strokeWidth="10"
                 strokeDasharray={circumference}
                 strokeDashoffset={dashOffset}

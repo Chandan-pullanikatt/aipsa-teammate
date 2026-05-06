@@ -1,27 +1,85 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
-  --primary: #1a5d3a;
-  --primary-dark: #01362b;
-  --primary-light: #036b53;
-  --accent: #c28d00;
-  --accent-hover: #e0a300;
-  --text-main: #1a1a1a;
-  --text-muted: #666666;
-  --bg-main: #ffffff;
-  --bg-card: #f8faf9;
-  --header-height: 80px;
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Brand */
+  --primary:            #1a5d3a;
+  --primary-dark:       #14492d;
+  --primary-light:      #036b53;
+  --primary-tint:       #f0fdf4;
+  --primary-tint-bd:    #c6e9d4;
+  --accent:             #c28d00;
+  --accent-hover:       #e0a300;
+
+  /* Surfaces */
+  --surface:            #ffffff;     /* cards, panels, topbar, sidebar */
+  --surface-2:          #f4f6f4;     /* app/page background */
+  --surface-3:          #f8fafc;     /* input fields, slightly elevated */
+  --surface-hover:      #f0f0f0;     /* hover state background */
+
+  /* Typography */
+  --text-main:          #1a1a1a;
+  --text-2:             #555555;     /* secondary text */
+  --text-muted:         #777777;     /* muted/tertiary */
+  --text-placeholder:   #aaaaaa;
+
+  /* Borders */
+  --border:             #e0e0e0;
+  --border-focus:       #1a5c3a;
+
+  /* Shadows */
+  --shadow-sm:          0 1px 4px rgba(0,0,0,0.06);
+  --shadow-md:          0 2px 8px rgba(0,0,0,0.08);
+  --shadow-lg:          0 8px 32px rgba(0,0,0,0.12);
+
+  /* Status */
+  --danger:             #d32f2f;
+  --danger-tint:        #fef2f2;
+  --danger-bd:          #fecaca;
+  --warning:            #f59e0b;
+  --success:            #2e7d32;
+
+  /* Misc */
+  --header-height:      60px;
+  --radius:             8px;
+  --radius-lg:          10px;
+  --transition:         all 0.2s ease;
 }
 
+/* ── Dark theme overrides ───────────────────────────────────────────────────── */
 [data-theme='dark'] {
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --bg-main: #050a09;
-  --bg-card: #0c1a17;
-  --primary-light: #049372;
+  color-scheme: dark;
+
+  --primary-tint:       #0e1c14;
+  --primary-tint-bd:    #1a3226;
+
+  --surface:            #111c16;
+  --surface-2:          #0a0f0d;
+  --surface-3:          #182318;
+  --surface-hover:      #1e2d22;
+
+  --text-main:          #f0f4f2;
+  --text-2:             #9da8a3;
+  --text-muted:         #7a8a82;
+  --text-placeholder:   #526060;
+
+  --border:             #2a3830;
+  --border-focus:       #2ecc86;
+
+  --shadow-sm:          0 1px 4px rgba(0,0,0,0.30);
+  --shadow-md:          0 2px 8px rgba(0,0,0,0.40);
+  --shadow-lg:          0 8px 32px rgba(0,0,0,0.55);
+
+  --danger-tint:        #2a1212;
+  --danger-bd:          #5a2020;
+  --primary-light:      #049372;
+
+  /* Legacy compat */
+  --bg-main:            #0a0f0d;
+  --bg-card:            #111c16;
 }
 
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
 * {
   margin: 0;
   padding: 0;
@@ -30,11 +88,11 @@
 
 body {
   font-family: 'Outfit', sans-serif;
-  background-color: var(--bg-main);
+  background-color: var(--surface-2);
   color: var(--text-main);
   line-height: 1.6;
   overflow-x: hidden;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 a {
@@ -57,37 +115,33 @@ button {
   padding: 0 2rem;
 }
 
-/* Glassmorphism utilities */
+/* ── Glassmorphism ──────────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.05);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
 .glass-dark {
-  background: rgba(2, 77, 60, 0.95);
+  background: rgba(2,77,60,0.95);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255,255,255,0.05);
 }
 
-/* Animations */
+/* ── Animations ─────────────────────────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.fade-in {
-  animation: fadeIn 0.8s ease forwards;
-}
+.fade-in { animation: fadeIn 0.8s ease forwards; }
 
 @media (max-width: 768px) {
-  .container {
-    padding: 0 1.5rem;
-  }
+  .container { padding: 0 1.5rem; }
 }
 
-/* Shared form utilities used across app components */
+/* ── Shared form utilities ───────────────────────────────────────────────────── */
 .ob-field {
   display: flex;
   flex-direction: column;
@@ -97,17 +151,17 @@ button {
 .ob-field label {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #444444;
+  color: var(--text-2);
 }
 
 .ob-field input,
 .ob-field select {
   padding: 0.7rem 0.875rem;
-  border: 1.5px solid #e0e0e0;
-  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
   font-size: 0.95rem;
-  color: #1a1a1a;
-  background: #f8fafc;
+  color: var(--text-main);
+  background: var(--surface-3);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
   font-family: inherit;
@@ -115,20 +169,21 @@ button {
 
 .ob-field input:focus,
 .ob-field select:focus {
-  border-color: #1a5c3a;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(26, 92, 58, 0.1);
+  border-color: var(--border-focus);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(26,92,58,0.1);
 }
 
 .ob-error {
-  background: #fef2f2;
-  color: #d32f2f;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
+  background: var(--danger-tint);
+  color: var(--danger);
+  border: 1px solid var(--danger-bd);
+  border-radius: var(--radius);
   padding: 0.6rem 1rem;
   font-size: 0.875rem;
 }
 
+/* ── Shared button utilities ─────────────────────────────────────────────────── */
 .task-form-actions {
   display: flex;
   gap: 0.75rem;
@@ -137,24 +192,24 @@ button {
 
 .task-form-cancel {
   background: transparent;
-  border: 1.5px solid #e0e0e0;
-  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
   padding: 0.6rem 1.25rem;
   font-size: 0.9rem;
   font-weight: 500;
-  color: #666;
+  color: var(--text-muted);
   cursor: pointer;
   transition: border-color 0.2s;
   font-family: inherit;
 }
 
-.task-form-cancel:hover { border-color: #999; }
+.task-form-cancel:hover { border-color: var(--text-2); }
 
 .task-form-submit {
-  background: #1a5c3a;
+  background: var(--primary);
   color: #ffffff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 0.6rem 1.5rem;
   font-size: 0.9rem;
   font-weight: 600;
@@ -163,13 +218,13 @@ button {
   font-family: inherit;
 }
 
-.task-form-submit:hover { background: #14492d; }
+.task-form-submit:hover { background: var(--primary-dark); }
 
 .ob-btn {
-  background: #1a5c3a;
+  background: var(--primary);
   color: #ffffff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 0.8rem;
   font-size: 0.95rem;
   font-weight: 600;
@@ -182,5 +237,50 @@ button {
   font-family: inherit;
 }
 
-.ob-btn:hover:not(:disabled) { background: #14492d; }
-.ob-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.ob-btn:hover:not(:disabled) { background: var(--primary-dark); }
+.ob-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Error boundary ──────────────────────────────────────────── */
+.error-boundary-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  font-family: 'Outfit', sans-serif;
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.error-boundary-icon { font-size: 3rem; margin-bottom: 1rem; }
+
+.error-boundary-screen h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+}
+
+.error-boundary-screen p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  max-width: 400px;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.error-boundary-screen button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.7rem 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.error-boundary-screen button:hover { background: var(--primary-dark); }

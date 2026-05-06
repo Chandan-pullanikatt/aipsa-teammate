@@ -1,6 +1,6 @@
 .onboarding-page {
   min-height: 100vh;
-  background: #f4f6f4;
+  background: var(--surface-2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -13,16 +13,13 @@
 }
 
 .onboarding-header h1 {
-  font-size: 2rem;
+  font-size: 1.875rem;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--text-main);
   margin-bottom: 0.5rem;
 }
 
-.onboarding-header p {
-  color: #666666;
-  font-size: 1rem;
-}
+.onboarding-header p { color: var(--text-muted); font-size: 1rem; }
 
 .onboarding-cards {
   display: flex;
@@ -34,113 +31,41 @@
 
 .onboarding-card {
   flex: 1;
-  background: #ffffff;
-  border-radius: 10px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
   padding: 2rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
 }
 
-.ob-card-icon {
-  font-size: 2rem;
-  margin-bottom: 0.75rem;
-}
+.ob-card-icon { font-size: 2rem; margin-bottom: 0.75rem; }
 
 .onboarding-card h2 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 700;
-  color: #1a1a1a;
-  margin-bottom: 0.4rem;
+  color: var(--text-main);
+  margin-bottom: 0.375rem;
 }
 
-.ob-card-desc {
-  color: #666666;
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
-}
+.ob-card-desc { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1.5rem; }
 
-.ob-error {
-  background: #fef2f2;
-  color: #d32f2f;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  padding: 0.6rem 1rem;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-}
-
-.ob-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.ob-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.ob-field label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #444444;
-}
-
-.ob-field input,
-.ob-field select {
-  padding: 0.7rem 0.875rem;
-  border: 1.5px solid #e0e0e0;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  color: #1a1a1a;
-  background: #f8fafc;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  font-family: inherit;
-}
-
-.ob-field input:focus,
-.ob-field select:focus {
-  border-color: #1a5c3a;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(26,92,58,0.1);
-}
-
-.ob-btn {
-  background: #1a5c3a;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.8rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 46px;
-  transition: background 0.2s;
-}
-
-.ob-btn:hover:not(:disabled) { background: #14492d; }
-.ob-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.ob-form { display: flex; flex-direction: column; gap: 1rem; }
 
 .ob-btn-outline {
   background: transparent;
-  color: #1a5c3a;
-  border: 2px solid #1a5c3a;
+  color: var(--primary);
+  border: 2px solid var(--primary);
 }
 
 .ob-btn-outline:hover:not(:disabled) {
-  background: #1a5c3a;
+  background: var(--primary);
   color: #ffffff;
 }
 
 .ob-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255,255,255,0.4);
+  border: 2px solid rgba(255,255,255,0.35);
   border-top-color: #ffffff;
   border-radius: 50%;
   animation: ob-spin 0.8s linear infinite;
@@ -148,8 +73,8 @@
 }
 
 .ob-spinner-dark {
-  border-color: rgba(26,92,58,0.3);
-  border-top-color: #1a5c3a;
+  border-color: rgba(26,92,58,0.25);
+  border-top-color: var(--primary);
 }
 
 @keyframes ob-spin { to { transform: rotate(360deg); } }
@@ -159,21 +84,33 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: 6rem;
+  padding-top: 5rem;
   flex-shrink: 0;
-  color: #999;
-  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 @media (max-width: 768px) {
   .onboarding-cards { flex-direction: column; }
-  .onboarding-divider { flex-direction: row; padding-top: 0; gap: 1rem; }
+  .onboarding-divider {
+    flex-direction: row;
+    padding-top: 0;
+    gap: 1rem;
+    width: 100%;
+    max-width: 860px;
+  }
   .onboarding-divider::before,
   .onboarding-divider::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: #e0e0e0;
+    background: var(--border);
   }
+}
+
+@media (max-width: 480px) {
+  .onboarding-page { padding: 2rem 1rem; }
+  .onboarding-header h1 { font-size: 1.5rem; }
+  .onboarding-card { padding: 1.5rem; }
 }

@@ -1,24 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
+import { supabase } from '../lib/supabase';
 import './OtpPage.css';
 
 export default function OtpPage() {
-  const [digits, setDigits] = useState(['', '', '', '', '', '']);
-  const [timer, setTimer] = useState(60);
+  const [digits, setDigits]     = useState(['', '', '', '', '', '']);
+  const [timer, setTimer]       = useState(60);
   const [canResend, setCanResend] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const refs = useRef([]);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const refs    = useRef([]);
   const navigate = useNavigate();
-  const { login, memberships, users } = useApp();
 
-  const email = localStorage.getItem('tm_pending_email') || 'your email';
+  const email = localStorage.getItem('tm_pending_email') || '';
 
   useEffect(() => {
-    if (!localStorage.getItem('tm_pending_email')) {
-      navigate('/login');
-    }
+    if (!email) { navigate('/login'); return; }
     refs.current[0]?.focus();
   }, []);
 
@@ -44,30 +41,54 @@ export default function OtpPage() {
 
   async function handleVerify(e) {
     e.preventDefault();
-    if (digits.join('').length < 6) {
-      setError('Please enter the complete 6-digit code');
+    const token = digits.join('');
+    if (token.length < 6) {
+      setError('Please enter the complete 6-digit code.');
       return;
     }
     setLoading(true);
     setError('');
-    await new Promise(r => setTimeout(r, 700));
 
-    const user = login(email);
+    const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    });
+
+    if (verifyErr) {
+      setLoading(false);
+      setError(verifyErr.message || 'Invalid or expired code. Please try again.');
+      setDigits(['', '', '', '', '', '']);
+      refs.current[0]?.focus();
+      return;
+    }
+
     localStorage.removeItem('tm_pending_email');
 
-    // Check memberships synchronously from existing state (login only changes currentUser)
-    const existingUser = users.find(u => u.email === email);
-    const hasMembership = memberships.some(m => m.userId === (existingUser?.id || user.id));
+    // Check if user has any school memberships to decide where to redirect
+    const { data: memberships } = await supabase
+      .from('memberships')
+      .select('id')
+      .eq('user_id', data.user.id)
+      .limit(1);
 
     setLoading(false);
-    navigate(hasMembership ? '/app' : '/onboarding');
+    navigate(memberships?.length ? '/app' : '/onboarding', { replace: true });
   }
 
-  function handleResend() {
+  async function handleResend() {
     setTimer(60);
     setCanResend(false);
     setDigits(['', '', '', '', '', '']);
-    refs.current[0]?.focus();
+    setError('');
+
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+
+    if (otpErr) setError(otpErr.message || 'Failed to resend. Please try again.');
+    else refs.current[0]?.focus();
   }
 
   function handleBack() {
@@ -86,7 +107,6 @@ export default function OtpPage() {
           We sent a 6-digit code to<br />
           <strong>{email}</strong>
         </p>
-        <p className="otp-hint">Enter any 6 digits for this demo.</p>
 
         {error && <div className="otp-error">{error}</div>}
 

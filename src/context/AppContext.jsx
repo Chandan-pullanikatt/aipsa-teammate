@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
 
 const AppContext = createContext(null);
 
@@ -8,178 +9,481 @@ export function useApp() {
   return ctx;
 }
 
-const STORAGE = {
-  schools: 'tm_schools',
-  users: 'tm_users',
-  groups: 'tm_groups',
-  groupMembers: 'tm_group_members',
-  tasks: 'tm_tasks',
-  messages: 'tm_messages',
-  memberships: 'tm_memberships',
-  inviteCodes: 'tm_invite_codes',
-  currentUser: 'tm_current_user',
-  seeded: 'tm_seeded',
-};
+// ── Data formatters (DB snake_case → app camelCase) ───────────
 
-function genId() {
-  return Math.random().toString(36).slice(2, 9);
+function fmtProfile(row) {
+  return { id: row.id, email: row.email, name: row.name || '' };
 }
 
-function genCode(prefix) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 5)}`;
+function fmtSchool(row) {
+  return { id: row.id, name: row.name, address: row.address || '', type: row.type || 'Secondary' };
 }
 
-const now = Date.now();
-const daysMs = (n) => n * 86400000;
+function fmtMembership(row) {
+  return { userId: row.user_id, schoolId: row.school_id, role: row.role };
+}
 
-const SEED = {
-  schools: [
-    { id: 'school-x', name: 'School X', address: '123 Education Lane, New Delhi', type: 'Secondary' },
-    { id: 'school-y', name: 'School Y', address: '456 Knowledge Park, Mumbai', type: 'Primary' },
-  ],
-  users: [
-    { id: 'user-test', email: 'test@schoolx.com', name: 'Test User' },
-    { id: 'user-t1', email: 'teacher1@schoolx.com', name: 'Rahul Sharma' },
-    { id: 'user-t2', email: 'teacher2@schoolx.com', name: 'Neha Gupta' },
-    { id: 'user-m1', email: 'manager1@schoolx.com', name: 'Anita Singh' },
-    { id: 'user-s1', email: 'staff1@schoolx.com', name: 'Deepak Kumar' },
-  ],
-  memberships: [
-    { userId: 'user-test', schoolId: 'school-x', role: 'Owner' },
-    { userId: 'user-t1', schoolId: 'school-x', role: 'Teacher' },
-    { userId: 'user-t2', schoolId: 'school-x', role: 'Teacher' },
-    { userId: 'user-m1', schoolId: 'school-x', role: 'Manager' },
-    { userId: 'user-s1', schoolId: 'school-x', role: 'Staff' },
-  ],
-  inviteCodes: {
-    'school-x': { teacher: 'x-123', staff: 'x-273', manager: 'x-573' },
-    'school-y': { teacher: 'y-576', staff: 'y-963', manager: 'y-789' },
-  },
-  groups: [
-    { id: 'x-g1', schoolId: 'school-x', name: 'Science Dept', parentId: null },
-    { id: 'x-g1-1', schoolId: 'school-x', name: 'Physics', parentId: 'x-g1' },
-    { id: 'x-g1-2', schoolId: 'school-x', name: 'Chemistry', parentId: 'x-g1' },
-    { id: 'x-g2', schoolId: 'school-x', name: 'Arts Dept', parentId: null },
-    { id: 'x-g3', schoolId: 'school-x', name: 'Admin Office', parentId: null },
-    { id: 'y-g1', schoolId: 'school-y', name: 'Mathematics', parentId: null },
-    { id: 'y-g2', schoolId: 'school-y', name: 'English Dept', parentId: null },
-    { id: 'y-g3', schoolId: 'school-y', name: 'Staff Room', parentId: null },
-  ],
-  groupMembers: [
-    { userId: 'user-test', groupId: 'x-g1' },
-    { userId: 'user-test', groupId: 'x-g1-1' },
-    { userId: 'user-test', groupId: 'x-g1-2' },
-    { userId: 'user-test', groupId: 'x-g2' },
-    { userId: 'user-test', groupId: 'x-g3' },
-    { userId: 'user-t1', groupId: 'x-g1' },
-    { userId: 'user-t1', groupId: 'x-g1-1' },
-    { userId: 'user-t2', groupId: 'x-g1' },
-    { userId: 'user-t2', groupId: 'x-g1-2' },
-    { userId: 'user-m1', groupId: 'x-g3' },
-    { userId: 'user-s1', groupId: 'x-g3' },
-  ],
-  tasks: [
-    { id: 'tk1', groupId: 'x-g1', title: 'Prepare quarterly science report', assignedTo: 'user-t1', dueDate: new Date(now + daysMs(7)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk2', groupId: 'x-g1', title: 'Review lab equipment inventory', assignedTo: 'user-t2', dueDate: new Date(now + daysMs(14)).toISOString().slice(0,10), priority: 'medium', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk3', groupId: 'x-g1', title: 'Update curriculum documents', assignedTo: 'user-test', dueDate: new Date(now - daysMs(2)).toISOString().slice(0,10), priority: 'low', status: 'completed', createdBy: 'user-test' },
-    { id: 'tk4', groupId: 'x-g1', title: 'Organize science fair registration', assignedTo: 'user-t1', dueDate: new Date(now - daysMs(5)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk5', groupId: 'x-g1-1', title: 'Set up optics lab experiment', assignedTo: 'user-t1', dueDate: new Date(now + daysMs(3)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk6', groupId: 'x-g1-1', title: 'Grade mid-term physics papers', assignedTo: 'user-t1', dueDate: new Date(now + daysMs(5)).toISOString().slice(0,10), priority: 'medium', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk7', groupId: 'x-g1-1', title: 'Order new textbooks', assignedTo: 'user-test', dueDate: new Date(now + daysMs(20)).toISOString().slice(0,10), priority: 'low', status: 'completed', createdBy: 'user-test' },
-    { id: 'tk8', groupId: 'x-g1-2', title: 'Replenish chemical reagents', assignedTo: 'user-t2', dueDate: new Date(now + daysMs(2)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk9', groupId: 'x-g1-2', title: 'Submit safety inspection report', assignedTo: 'user-test', dueDate: new Date(now - daysMs(1)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk10', groupId: 'x-g1-2', title: 'Update lab procedures manual', assignedTo: 'user-t2', dueDate: new Date(now + daysMs(10)).toISOString().slice(0,10), priority: 'medium', status: 'completed', createdBy: 'user-test' },
-    { id: 'tk11', groupId: 'x-g2', title: 'Organize annual art exhibition', assignedTo: 'user-test', dueDate: new Date(now + daysMs(30)).toISOString().slice(0,10), priority: 'medium', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk12', groupId: 'x-g2', title: 'Purchase art supplies', assignedTo: 'user-test', dueDate: new Date(now + daysMs(7)).toISOString().slice(0,10), priority: 'low', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk13', groupId: 'x-g2', title: 'Submit grant application', assignedTo: 'user-test', dueDate: new Date(now - daysMs(3)).toISOString().slice(0,10), priority: 'high', status: 'completed', createdBy: 'user-test' },
-    { id: 'tk14', groupId: 'x-g3', title: 'Update student records system', assignedTo: 'user-m1', dueDate: new Date(now + daysMs(5)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk15', groupId: 'x-g3', title: 'Prepare monthly attendance report', assignedTo: 'user-m1', dueDate: new Date(now + daysMs(2)).toISOString().slice(0,10), priority: 'medium', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk16', groupId: 'x-g3', title: 'Coordinate parent-teacher meeting', assignedTo: 'user-test', dueDate: new Date(now + daysMs(14)).toISOString().slice(0,10), priority: 'high', status: 'pending', createdBy: 'user-test' },
-    { id: 'tk17', groupId: 'x-g3', title: 'File term reports', assignedTo: 'user-m1', dueDate: new Date(now - daysMs(7)).toISOString().slice(0,10), priority: 'medium', status: 'completed', createdBy: 'user-test' },
-  ],
-  messages: [
-    { id: 'mg1', groupId: 'x-g1', senderId: 'user-test', senderName: 'Test User', content: 'Good morning! Please review the quarterly report draft.', timestamp: new Date(now - 5*3600000).toISOString() },
-    { id: 'mg2', groupId: 'x-g1', senderId: 'user-t1', senderName: 'Rahul Sharma', content: "Reviewed it. The lab equipment section needs updating.", timestamp: new Date(now - 4*3600000).toISOString() },
-    { id: 'mg3', groupId: 'x-g1', senderId: 'user-t2', senderName: 'Neha Gupta', content: 'We need to include new safety protocols in the appendix.', timestamp: new Date(now - 3*3600000).toISOString() },
-    { id: 'mg4', groupId: 'x-g1', senderId: 'user-test', senderName: 'Test User', content: "Good points! Adding those sections before EOD.", timestamp: new Date(now - 2*3600000).toISOString() },
-    { id: 'mg5', groupId: 'x-g1', senderId: 'user-t1', senderName: 'Rahul Sharma', content: 'Science fair deadline is this Friday. Please remind students.', timestamp: new Date(now - 3600000).toISOString() },
-    { id: 'mg6', groupId: 'x-g1', senderId: 'user-test', senderName: 'Test User', content: "Will do! Sending a circular to all class teachers.", timestamp: new Date(now - 1800000).toISOString() },
-    { id: 'mg7', groupId: 'x-g1-1', senderId: 'user-t1', senderName: 'Rahul Sharma', content: 'Optics experiment is set up in Lab 3. Students start tomorrow.', timestamp: new Date(now - 3*7200000).toISOString() },
-    { id: 'mg8', groupId: 'x-g1-1', senderId: 'user-test', senderName: 'Test User', content: 'Great! Make sure all safety equipment is in place.', timestamp: new Date(now - 2*7200000).toISOString() },
-    { id: 'mg9', groupId: 'x-g1-1', senderId: 'user-t1', senderName: 'Rahul Sharma', content: 'Done. Observation sheets are ready for students.', timestamp: new Date(now - 7200000).toISOString() },
-    { id: 'mg10', groupId: 'x-g1-1', senderId: 'user-test', senderName: 'Test User', content: 'Mid-term grades due by Friday.', timestamp: new Date(now - 3600000).toISOString() },
-    { id: 'mg11', groupId: 'x-g1-1', senderId: 'user-t1', senderName: 'Rahul Sharma', content: "Will have them ready by Thursday.", timestamp: new Date(now - 1200000).toISOString() },
-    { id: 'mg12', groupId: 'x-g1-2', senderId: 'user-t2', senderName: 'Neha Gupta', content: 'Urgent: Running low on sodium chloride and HCl.', timestamp: new Date(now - 86400000).toISOString() },
-    { id: 'mg13', groupId: 'x-g1-2', senderId: 'user-test', senderName: 'Test User', content: 'Purchase order raised. Delivery in 2 days.', timestamp: new Date(now - 82800000).toISOString() },
-    { id: 'mg14', groupId: 'x-g1-2', senderId: 'user-t2', senderName: 'Neha Gupta', content: 'Thanks! Also — safety inspection is overdue.', timestamp: new Date(now - 43200000).toISOString() },
-    { id: 'mg15', groupId: 'x-g1-2', senderId: 'user-test', senderName: 'Test User', content: "Submitting the inspection report today.", timestamp: new Date(now - 7200000).toISOString() },
-    { id: 'mg16', groupId: 'x-g1-2', senderId: 'user-t2', senderName: 'Neha Gupta', content: 'Lab procedures manual has been updated. Please review.', timestamp: new Date(now - 3600000).toISOString() },
-    { id: 'mg17', groupId: 'x-g2', senderId: 'user-test', senderName: 'Test User', content: 'Exhibition planning started. Theme: "Nature & Tech".', timestamp: new Date(now - 172800000).toISOString() },
-    { id: 'mg18', groupId: 'x-g2', senderId: 'user-test', senderName: 'Test User', content: 'Art supplies order placed. Delivery next week.', timestamp: new Date(now - 86400000).toISOString() },
-    { id: 'mg19', groupId: 'x-g2', senderId: 'user-test', senderName: 'Test User', content: 'Grant application submitted!', timestamp: new Date(now - 43200000).toISOString() },
-    { id: 'mg20', groupId: 'x-g2', senderId: 'user-test', senderName: 'Test User', content: 'Venue booked for last weekend of the month.', timestamp: new Date(now - 7200000).toISOString() },
-    { id: 'mg21', groupId: 'x-g2', senderId: 'user-test', senderName: 'Test User', content: 'Collect student artwork submissions by next Monday.', timestamp: new Date(now - 1800000).toISOString() },
-    { id: 'mg22', groupId: 'x-g3', senderId: 'user-m1', senderName: 'Anita Singh', content: 'Monthly attendance report ready by tomorrow afternoon.', timestamp: new Date(now - 86400000).toISOString() },
-    { id: 'mg23', groupId: 'x-g3', senderId: 'user-test', senderName: 'Test User', content: 'Please include department-wise breakdown this time.', timestamp: new Date(now - 79200000).toISOString() },
-    { id: 'mg24', groupId: 'x-g3', senderId: 'user-m1', senderName: 'Anita Singh', content: 'Template updated accordingly.', timestamp: new Date(now - 72000000).toISOString() },
-    { id: 'mg25', groupId: 'x-g3', senderId: 'user-test', senderName: 'Test User', content: 'Parent-teacher meeting on the 20th. Please prep hall allocation.', timestamp: new Date(now - 43200000).toISOString() },
-    { id: 'mg26', groupId: 'x-g3', senderId: 'user-m1', senderName: 'Anita Singh', content: 'Halls 1 and 2 booked. Confirmation sent to all teachers.', timestamp: new Date(now - 3600000).toISOString() },
-  ],
-};
+function fmtGroup(row) {
+  return { id: row.id, schoolId: row.school_id, name: row.name, parentId: row.parent_id || null };
+}
 
-function loadInitialState() {
-  if (!localStorage.getItem(STORAGE.seeded)) {
-    Object.entries(SEED).forEach(([key, val]) => {
-      localStorage.setItem(STORAGE[key], JSON.stringify(val));
-    });
-    localStorage.setItem(STORAGE.currentUser, JSON.stringify(SEED.users[0]));
-    localStorage.setItem(STORAGE.seeded, 'true');
-    return { ...SEED, currentUser: SEED.users[0] };
-  }
+function fmtGroupMember(row) {
+  return { userId: row.user_id, groupId: row.group_id };
+}
+
+function fmtTask(row) {
   return {
-    schools: JSON.parse(localStorage.getItem(STORAGE.schools) || '[]'),
-    users: JSON.parse(localStorage.getItem(STORAGE.users) || '[]'),
-    groups: JSON.parse(localStorage.getItem(STORAGE.groups) || '[]'),
-    groupMembers: JSON.parse(localStorage.getItem(STORAGE.groupMembers) || '[]'),
-    tasks: JSON.parse(localStorage.getItem(STORAGE.tasks) || '[]'),
-    messages: JSON.parse(localStorage.getItem(STORAGE.messages) || '[]'),
-    memberships: JSON.parse(localStorage.getItem(STORAGE.memberships) || '[]'),
-    inviteCodes: JSON.parse(localStorage.getItem(STORAGE.inviteCodes) || '{}'),
-    currentUser: JSON.parse(localStorage.getItem(STORAGE.currentUser) || 'null'),
+    id:         row.id,
+    groupId:    row.group_id,
+    title:      row.title,
+    assignedTo: row.assigned_to,
+    dueDate:    row.due_date,
+    priority:   row.priority,
+    status:     row.status,
+    createdBy:  row.created_by,
   };
 }
 
+function genCode(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
+// ── Initial state ────────────────────────────────────────────
+
+const INITIAL = {
+  currentUser:  null,
+  schools:      [],
+  users:        [],
+  groups:       [],
+  groupMembers: [],
+  tasks:        [],
+  memberships:  [],
+  inviteCodes:  {},
+  theme:        localStorage.getItem('tm_theme') || 'light',
+  loading:      true,
+};
+
 export function AppProvider({ children }) {
-  const [state, setState] = useState(loadInitialState);
+  const [state, setState] = useState(INITIAL);
+  const taskSubRef = useRef(null);
 
-  function update(partial) {
-    Object.entries(partial).forEach(([key, val]) => {
-      if (STORAGE[key]) localStorage.setItem(STORAGE[key], JSON.stringify(val));
-    });
-    setState(prev => ({ ...prev, ...partial }));
-  }
+  // ── Load all data for a signed-in user ─────────────────────
 
-  function login(email) {
-    let user = state.users.find(u => u.email === email);
-    if (!user) {
-      user = { id: `user-${genId()}`, email, name: email.split('@')[0] };
-      update({ users: [...state.users, user], currentUser: user });
-    } else {
-      update({ currentUser: user });
+  async function loadUserData(authUser) {
+    try {
+      setState(prev => ({ ...prev, loading: true }));
+
+      // Profile
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      const profile = profileRow ? fmtProfile(profileRow) : {
+        id: authUser.id, email: authUser.email, name: '',
+      };
+
+      // Memberships + schools
+      const { data: membershipRows = [] } = await supabase
+        .from('memberships')
+        .select('*')
+        .eq('user_id', authUser.id);
+
+      const schoolIds = membershipRows.map(m => m.school_id);
+
+      if (schoolIds.length === 0) {
+        setState(prev => ({
+          ...prev, currentUser: profile,
+          schools: [], users: [profile], groups: [],
+          groupMembers: [], tasks: [], memberships: [],
+          inviteCodes: {}, loading: false,
+        }));
+        return;
+      }
+
+      // Parallel load: schools, groups, invite codes
+      const [
+        { data: schoolRows    = [] },
+        { data: groupRows     = [] },
+        { data: inviteRows    = [] },
+      ] = await Promise.all([
+        supabase.from('schools').select('*').in('id', schoolIds),
+        supabase.from('groups').select('*').in('school_id', schoolIds),
+        supabase.from('invite_codes').select('*').in('school_id', schoolIds),
+      ]);
+
+      const groupIds = groupRows.map(g => g.id);
+
+      // Parallel load: group members + tasks
+      const [
+        { data: gmRows   = [] },
+        { data: taskRows = [] },
+      ] = await Promise.all([
+        groupIds.length
+          ? supabase.from('group_members').select('*').in('group_id', groupIds)
+          : Promise.resolve({ data: [] }),
+        groupIds.length
+          ? supabase.from('tasks').select('*').in('group_id', groupIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      // All user profiles visible to this user
+      const userIds = [...new Set([authUser.id, ...membershipRows.map(m => m.user_id), ...gmRows.map(gm => gm.user_id)])];
+      const { data: userRows = [] } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', userIds);
+
+      // Normalise invite codes: { schoolId: { teacher: code, staff: code, manager: code } }
+      const inviteCodes = {};
+      inviteRows.forEach(r => {
+        if (!inviteCodes[r.school_id]) inviteCodes[r.school_id] = {};
+        inviteCodes[r.school_id][r.role_key] = r.code;
+      });
+
+      setState(prev => ({
+        ...prev,
+        currentUser:  profile,
+        schools:      schoolRows.map(fmtSchool),
+        users:        userRows.map(fmtProfile),
+        memberships:  membershipRows.map(fmtMembership),
+        groups:       groupRows.map(fmtGroup),
+        groupMembers: gmRows.map(fmtGroupMember),
+        tasks:        taskRows.map(fmtTask),
+        inviteCodes,
+        loading:      false,
+      }));
+
+      // Subscribe to task changes for real-time notification badge
+      subscribeToTasks(groupIds);
+
+    } catch (err) {
+      console.error('loadUserData error:', err);
+      setState(prev => ({ ...prev, loading: false }));
     }
-    localStorage.setItem(STORAGE.currentUser, JSON.stringify(user));
-    return user;
   }
 
-  function logout() {
-    localStorage.setItem(STORAGE.currentUser, 'null');
-    setState(prev => ({ ...prev, currentUser: null }));
+  // ── Supabase Realtime — tasks ─────────────────────────────
+
+  function subscribeToTasks(groupIds) {
+    if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
+    if (!groupIds.length) return;
+
+    const ch = supabase
+      .channel('task-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, ({ new: row }) => {
+        if (groupIds.includes(row.group_id)) {
+          setState(prev => ({ ...prev, tasks: [...prev.tasks, fmtTask(row)] }));
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, ({ new: row }) => {
+        setState(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === row.id ? fmtTask(row) : t) }));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, ({ old: row }) => {
+        setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== row.id) }));
+      })
+      .subscribe();
+
+    taskSubRef.current = ch;
   }
+
+  // ── Auth state listener ───────────────────────────────────
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserData(session.user);
+      } else {
+        setState(prev => ({ ...prev, loading: false }));
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUserData(session.user);
+      }
+      if (event === 'SIGNED_OUT') {
+        if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
+        setState({ ...INITIAL, loading: false, theme: localStorage.getItem('tm_theme') || 'light' });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
+    };
+  }, []);
+
+  // ── Theme ────────────────────────────────────────────────
+
+  function toggleTheme() {
+    const next = state.theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('tm_theme', next);
+    setState(prev => ({ ...prev, theme: next }));
+  }
+
+  // ── Auth ─────────────────────────────────────────────────
+
+  async function logout() {
+    await supabase.auth.signOut();
+  }
+
+  // ── User profile ─────────────────────────────────────────
+
+  async function updateUserName(name) {
+    if (!state.currentUser) return;
+    const trimmed = name.trim();
+    await supabase.from('profiles').update({ name: trimmed }).eq('id', state.currentUser.id);
+    const updated = { ...state.currentUser, name: trimmed };
+    setState(prev => ({
+      ...prev,
+      currentUser: updated,
+      users: prev.users.map(u => u.id === state.currentUser.id ? updated : u),
+    }));
+  }
+
+  // ── School ───────────────────────────────────────────────
+
+  async function registerSchool(name, address, type) {
+    if (!state.currentUser) return null;
+
+    const { data: school, error: sErr } = await supabase
+      .from('schools')
+      .insert({ name: name.trim(), address: address.trim(), type })
+      .select()
+      .single();
+    if (sErr) throw sErr;
+
+    const { error: mErr } = await supabase
+      .from('memberships')
+      .insert({ user_id: state.currentUser.id, school_id: school.id, role: 'Owner' });
+    if (mErr) throw mErr;
+
+    // Create the three invite codes
+    const codes = [
+      { school_id: school.id, role_key: 'teacher', code: genCode('T') },
+      { school_id: school.id, role_key: 'staff',   code: genCode('S') },
+      { school_id: school.id, role_key: 'manager', code: genCode('M') },
+    ];
+    await supabase.from('invite_codes').insert(codes);
+
+    const invObj = {};
+    codes.forEach(c => { invObj[c.role_key] = c.code; });
+
+    setState(prev => ({
+      ...prev,
+      schools:     [...prev.schools, fmtSchool(school)],
+      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId: school.id, role: 'Owner' }],
+      inviteCodes: { ...prev.inviteCodes, [school.id]: invObj },
+    }));
+
+    return fmtSchool(school);
+  }
+
+  async function updateSchool(schoolId, edits) {
+    await supabase.from('schools').update(edits).eq('id', schoolId);
+    setState(prev => ({
+      ...prev,
+      schools: prev.schools.map(s => s.id === schoolId ? { ...s, ...edits } : s),
+    }));
+  }
+
+  async function regenerateCode(schoolId, roleKey) {
+    const code = genCode(roleKey === 'teacher' ? 'T' : roleKey === 'staff' ? 'S' : 'M');
+    await supabase
+      .from('invite_codes')
+      .upsert({ school_id: schoolId, role_key: roleKey, code }, { onConflict: 'school_id,role_key' });
+    setState(prev => ({
+      ...prev,
+      inviteCodes: {
+        ...prev.inviteCodes,
+        [schoolId]: { ...(prev.inviteCodes[schoolId] || {}), [roleKey]: code },
+      },
+    }));
+  }
+
+  // ── Membership ───────────────────────────────────────────
+
+  async function joinSchool(code) {
+    if (!state.currentUser) return { success: false, error: 'Not logged in' };
+
+    const { data: invRow } = await supabase
+      .from('invite_codes')
+      .select('*')
+      .eq('code', code.trim())
+      .single();
+
+    if (!invRow) return { success: false, error: 'Invalid invite code. Please check and try again.' };
+
+    const alreadyMember = state.memberships.some(
+      m => m.userId === state.currentUser.id && m.schoolId === invRow.school_id
+    );
+    if (alreadyMember) return { success: false, error: 'You are already a member of this school.' };
+
+    const roleMap = { teacher: 'Teacher', staff: 'Staff', manager: 'Manager' };
+    const role = roleMap[invRow.role_key] || 'Staff';
+
+    const { error: mErr } = await supabase
+      .from('memberships')
+      .insert({ user_id: state.currentUser.id, school_id: invRow.school_id, role });
+    if (mErr) return { success: false, error: mErr.message };
+
+    // Add user to all existing groups in the school
+    const schoolGroupIds = state.groups
+      .filter(g => g.schoolId === invRow.school_id)
+      .map(g => g.id);
+
+    if (schoolGroupIds.length) {
+      await supabase.from('group_members').insert(
+        schoolGroupIds.map(gid => ({ user_id: state.currentUser.id, group_id: gid }))
+      );
+    }
+
+    setState(prev => ({
+      ...prev,
+      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId: invRow.school_id, role }],
+      groupMembers: [
+        ...prev.groupMembers,
+        ...schoolGroupIds.map(gid => ({ userId: state.currentUser.id, groupId: gid })),
+      ],
+    }));
+
+    // Reload to get school data
+    await loadUserData({ id: state.currentUser.id, email: state.currentUser.email });
+    return { success: true, schoolId: invRow.school_id };
+  }
+
+  async function removeMember(schoolId, userId) {
+    if (!state.currentUser || userId === state.currentUser.id) return;
+    await supabase.from('memberships').delete()
+      .eq('user_id', userId).eq('school_id', schoolId);
+    const groupIds = state.groups.filter(g => g.schoolId === schoolId).map(g => g.id);
+    if (groupIds.length) {
+      await supabase.from('group_members').delete()
+        .eq('user_id', userId).in('group_id', groupIds);
+    }
+    setState(prev => ({
+      ...prev,
+      memberships:  prev.memberships.filter(m => !(m.userId === userId && m.schoolId === schoolId)),
+      groupMembers: prev.groupMembers.filter(gm => !(gm.userId === userId && groupIds.includes(gm.groupId))),
+    }));
+  }
+
+  // ── Groups ────────────────────────────────────────────────
+
+  async function addGroup(schoolId, name, parentId = null) {
+    const { data: grp, error } = await supabase
+      .from('groups')
+      .insert({ school_id: schoolId, name: name.trim(), parent_id: parentId })
+      .select()
+      .single();
+    if (error) throw error;
+
+    // Add all school members to the new group
+    const schoolMembers = state.memberships.filter(m => m.schoolId === schoolId);
+    if (schoolMembers.length) {
+      await supabase.from('group_members').insert(
+        schoolMembers.map(m => ({ user_id: m.userId, group_id: grp.id }))
+      );
+    }
+
+    setState(prev => ({
+      ...prev,
+      groups: [...prev.groups, fmtGroup(grp)],
+      groupMembers: [
+        ...prev.groupMembers,
+        ...schoolMembers.map(m => ({ userId: m.userId, groupId: grp.id })),
+      ],
+    }));
+    return fmtGroup(grp);
+  }
+
+  async function renameGroup(groupId, newName) {
+    await supabase.from('groups').update({ name: newName.trim() }).eq('id', groupId);
+    setState(prev => ({
+      ...prev,
+      groups: prev.groups.map(g => g.id === groupId ? { ...g, name: newName.trim() } : g),
+    }));
+  }
+
+  async function deleteGroup(groupId) {
+    // Collect this group and all descendants
+    function descendants(id) {
+      const children = state.groups.filter(g => g.parentId === id).map(g => g.id);
+      return children.flatMap(cid => [cid, ...descendants(cid)]);
+    }
+    const toDelete = [groupId, ...descendants(groupId)];
+
+    await supabase.from('groups').delete().in('id', toDelete);
+    setState(prev => ({
+      ...prev,
+      groups:       prev.groups.filter(g => !toDelete.includes(g.id)),
+      groupMembers: prev.groupMembers.filter(gm => !toDelete.includes(gm.groupId)),
+      tasks:        prev.tasks.filter(t => !toDelete.includes(t.groupId)),
+    }));
+  }
+
+  // ── Tasks ─────────────────────────────────────────────────
+
+  async function addTask(groupId, taskData) {
+    if (!state.currentUser) return;
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert({
+        group_id:    groupId,
+        title:       taskData.title,
+        assigned_to: taskData.assignedTo || null,
+        due_date:    taskData.dueDate || null,
+        priority:    taskData.priority || 'medium',
+        status:      'pending',
+        created_by:  state.currentUser.id,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    // Real-time subscription will update state; also update locally for instant feedback
+    setState(prev => ({
+      ...prev,
+      tasks: [...prev.tasks.filter(t => t.id !== data.id), fmtTask(data)],
+    }));
+  }
+
+  async function toggleTask(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+    setState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t),
+    }));
+  }
+
+  async function editTask(taskId, updates) {
+    const dbUpdates = {};
+    if (updates.title)      dbUpdates.title       = updates.title;
+    if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo || null;
+    if (updates.dueDate !== undefined)    dbUpdates.due_date    = updates.dueDate || null;
+    if (updates.priority)   dbUpdates.priority    = updates.priority;
+
+    await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
+    setState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t),
+    }));
+  }
+
+  async function deleteTask(taskId) {
+    await supabase.from('tasks').delete().eq('id', taskId);
+    setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
+  }
+
+  // ── Queries (synchronous, from in-memory state) ───────────
 
   function getRoleInSchool(schoolId, userId) {
     const uid = userId || state.currentUser?.id;
-    const m = state.memberships.find(m => m.userId === uid && m.schoolId === schoolId);
-    return m?.role || null;
+    return state.memberships.find(m => m.userId === uid && m.schoolId === schoolId)?.role || null;
   }
 
   function getCurrentUserSchools() {
@@ -196,7 +500,9 @@ export function AppProvider({ children }) {
     if (role === 'Owner' || role === 'Admin') {
       return state.groups.filter(g => g.schoolId === schoolId);
     }
-    const myGroupIds = state.groupMembers.filter(gm => gm.userId === state.currentUser.id).map(gm => gm.groupId);
+    const myGroupIds = state.groupMembers
+      .filter(gm => gm.userId === state.currentUser.id)
+      .map(gm => gm.groupId);
     return state.groups.filter(g => g.schoolId === schoolId && myGroupIds.includes(g.id));
   }
 
@@ -205,135 +511,33 @@ export function AppProvider({ children }) {
     return state.users.filter(u => ids.includes(u.id));
   }
 
-  function getGroupMessages(groupId) {
-    return state.messages
-      .filter(m => m.groupId === groupId)
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  function getSchoolMembers(schoolId) {
+    return state.memberships
+      .filter(m => m.schoolId === schoolId)
+      .map(m => ({ user: state.users.find(u => u.id === m.userId), role: m.role }))
+      .filter(m => m.user);
   }
 
   function getGroupTasks(groupId) {
     return state.tasks.filter(t => t.groupId === groupId);
   }
 
-  function addMessage(groupId, content, extra = {}) {
-    if (!state.currentUser) return;
-    const msg = {
-      id: `msg-${genId()}`, groupId,
-      senderId: state.currentUser.id,
-      senderName: state.currentUser.name,
-      content, timestamp: new Date().toISOString(),
-      type: 'text',
-      ...extra,
-    };
-    update({ messages: [...state.messages, msg] });
-    return msg;
-  }
-
-  function voteOnPoll(msgId, optionId) {
-    if (!state.currentUser) return;
-    const uid = state.currentUser.id;
-    const newMessages = state.messages.map(m => {
-      if (m.id !== msgId || m.type !== 'poll') return m;
-      return {
-        ...m,
-        pollOptions: m.pollOptions.map(opt => {
-          const votes = opt.votes.filter(v => v !== uid);
-          if (opt.id === optionId) votes.push(uid);
-          return { ...opt, votes };
-        }),
-      };
-    });
-    update({ messages: newMessages });
-  }
-
-  function toggleTodoItem(msgId, itemId) {
-    const newMessages = state.messages.map(m => {
-      if (m.id !== msgId || m.type !== 'todo') return m;
-      return {
-        ...m,
-        todoItems: m.todoItems.map(it =>
-          it.id === itemId ? { ...it, done: !it.done } : it
-        ),
-      };
-    });
-    update({ messages: newMessages });
-  }
-
-  function addTask(groupId, taskData) {
-    if (!state.currentUser) return;
-    const task = { id: `tk-${genId()}`, groupId, ...taskData, status: 'pending', createdBy: state.currentUser.id };
-    update({ tasks: [...state.tasks, task] });
-  }
-
-  function toggleTask(taskId) {
-    update({
-      tasks: state.tasks.map(t =>
-        t.id === taskId ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' } : t
-      ),
-    });
-  }
-
-  function addGroup(schoolId, name, parentId = null) {
-    const group = { id: `grp-${genId()}`, schoolId, name, parentId };
-    const newGroups = [...state.groups, group];
-    const newGMs = [...state.groupMembers];
-    if (state.currentUser) newGMs.push({ userId: state.currentUser.id, groupId: group.id });
-    update({ groups: newGroups, groupMembers: newGMs });
-    return group;
-  }
-
-  function joinSchool(code) {
-    const map = {};
-    Object.entries(state.inviteCodes).forEach(([schoolId, codes]) => {
-      Object.entries(codes).forEach(([roleName, c]) => {
-        map[c] = { schoolId, role: roleName.charAt(0).toUpperCase() + roleName.slice(1) };
-      });
-    });
-    const match = map[code];
-    if (!match) return { success: false, error: 'Invalid invite code' };
-    if (!state.currentUser) return { success: false, error: 'Not logged in' };
-    if (state.memberships.find(m => m.userId === state.currentUser.id && m.schoolId === match.schoolId)) {
-      return { success: false, error: 'Already a member of this school' };
-    }
-    const newMemberships = [...state.memberships, { userId: state.currentUser.id, schoolId: match.schoolId, role: match.role }];
-    const schoolGroups = state.groups.filter(g => g.schoolId === match.schoolId);
-    const newGMs = [...state.groupMembers];
-    schoolGroups.forEach(g => newGMs.push({ userId: state.currentUser.id, groupId: g.id }));
-    update({ memberships: newMemberships, groupMembers: newGMs });
-    return { success: true, schoolId: match.schoolId };
-  }
-
-  function registerSchool(name, address, type) {
-    if (!state.currentUser) return null;
-    const schoolId = `school-${genId()}`;
-    const school = { id: schoolId, name, address, type };
-    const newSchools = [...state.schools, school];
-    const newMemberships = [...state.memberships, { userId: state.currentUser.id, schoolId, role: 'Owner' }];
-    const newCodes = {
-      ...state.inviteCodes,
-      [schoolId]: { teacher: genCode('t'), staff: genCode('s'), manager: genCode('m') },
-    };
-    update({ schools: newSchools, memberships: newMemberships, inviteCodes: newCodes });
-    return school;
-  }
-
-  function updateSchool(schoolId, edits) {
-    update({ schools: state.schools.map(s => s.id === schoolId ? { ...s, ...edits } : s) });
-  }
-
-  function regenerateCode(schoolId, roleKey) {
-    const prefix = { teacher: 't', staff: 's', manager: 'm' }[roleKey] || 'x';
-    update({
-      inviteCodes: {
-        ...state.inviteCodes,
-        [schoolId]: { ...(state.inviteCodes[schoolId] || {}), [roleKey]: genCode(prefix) },
-      },
-    });
-  }
-
   function getUserById(id) {
     return state.users.find(u => u.id === id);
   }
+
+  function getMyNotifications() {
+    if (!state.currentUser) return [];
+    const today = new Date(new Date().toDateString());
+    return state.tasks.filter(t =>
+      t.assignedTo === state.currentUser.id &&
+      t.status === 'pending' &&
+      t.dueDate &&
+      new Date(t.dueDate) < today
+    );
+  }
+
+  // ── Permissions ───────────────────────────────────────────
 
   function canCreateTasks(schoolId) {
     return ['Owner', 'Admin', 'Manager', 'Teacher'].includes(getRoleInSchool(schoolId));
@@ -343,20 +547,35 @@ export function AppProvider({ children }) {
     return ['Owner', 'Admin'].includes(getRoleInSchool(schoolId));
   }
 
+  function canManageMembers(schoolId) {
+    return getRoleInSchool(schoolId) === 'Owner';
+  }
+
   return (
     <AppContext.Provider value={{
       ...state,
-      login, logout,
-      getRoleInSchool,
-      getCurrentUserSchools,
-      getGroupsForUser,
-      getGroupMembers,
-      getGroupMessages,
-      getGroupTasks,
-      addMessage, voteOnPoll, toggleTodoItem, addTask, toggleTask,
-      addGroup, joinSchool, registerSchool,
-      updateSchool, regenerateCode,
-      getUserById, canCreateTasks, canCreateGroups,
+      // auth
+      logout,
+      // theme
+      toggleTheme,
+      // user
+      updateUserName,
+      // school
+      registerSchool, updateSchool, regenerateCode,
+      // membership
+      joinSchool, removeMember,
+      // groups
+      addGroup, renameGroup, deleteGroup,
+      // tasks
+      addTask, toggleTask, editTask, deleteTask,
+      // queries
+      getRoleInSchool, getCurrentUserSchools,
+      getGroupsForUser, getGroupMembers, getSchoolMembers,
+      getGroupTasks, getUserById, getMyNotifications,
+      // permissions
+      canCreateTasks, canCreateGroups, canManageMembers,
+      // supabase client (for ChatTab real-time and image upload)
+      supabase,
     }}>
       {children}
     </AppContext.Provider>

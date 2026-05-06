@@ -66,6 +66,7 @@ export default function OnboardingPage() {
                 value={regForm.name}
                 onChange={e => setRegForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. St. Mary's High School"
+                maxLength={120}
               />
             </div>
             <div className="ob-field">
@@ -75,6 +76,7 @@ export default function OnboardingPage() {
                 value={regForm.address}
                 onChange={e => setRegForm(f => ({ ...f, address: e.target.value }))}
                 placeholder="Street, City, State"
+                maxLength={200}
               />
             </div>
             <div className="ob-field">
@@ -108,8 +110,10 @@ export default function OnboardingPage() {
               <input
                 type="text"
                 value={joinCode}
-                onChange={e => setJoinCode(e.target.value)}
-                placeholder="e.g. x-123"
+                onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="e.g. T-ABC1"
+                maxLength={20}
+                autoCapitalize="characters"
               />
             </div>
             <button type="submit" className="ob-btn ob-btn-outline" disabled={joinLoading}>
