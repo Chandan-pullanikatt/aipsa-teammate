@@ -1,45 +1,52 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import './OnboardingPage.css';
 
 export default function OnboardingPage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const { registerSchool, joinSchool, currentUser } = useApp();
 
   if (!currentUser) { navigate('/login'); return null; }
 
-  const [regForm, setRegForm] = useState({ name: '', address: '', type: 'Secondary' });
+  const [regForm,    setRegForm]    = useState({ name: '', address: '', type: 'Secondary' });
   const [regLoading, setRegLoading] = useState(false);
-  const [regError, setRegError] = useState('');
+  const [regError,   setRegError]   = useState('');
 
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode,    setJoinCode]    = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
-  const [joinError, setJoinError] = useState('');
+  const [joinError,   setJoinError]   = useState('');
 
   async function handleRegister(e) {
     e.preventDefault();
-    if (!regForm.name.trim()) { setRegError('School name is required'); return; }
+    if (!regForm.name.trim()) { setRegError('School name is required.'); return; }
     setRegLoading(true);
     setRegError('');
-    await new Promise(r => setTimeout(r, 600));
-    registerSchool(regForm.name.trim(), regForm.address.trim(), regForm.type);
-    setRegLoading(false);
-    navigate('/app');
+    try {
+      await registerSchool(regForm.name.trim(), regForm.address.trim(), regForm.type);
+      navigate('/app');
+    } catch (err) {
+      setRegError(err.message || 'Failed to register school. Please try again.');
+      setRegLoading(false);
+    }
   }
 
   async function handleJoin(e) {
     e.preventDefault();
-    if (!joinCode.trim()) { setJoinError('Please enter an invite code'); return; }
+    if (!joinCode.trim()) { setJoinError('Please enter an invite code.'); return; }
     setJoinLoading(true);
     setJoinError('');
-    await new Promise(r => setTimeout(r, 600));
-    const result = joinSchool(joinCode.trim());
-    setJoinLoading(false);
-    if (result.success) {
-      navigate('/app');
-    } else {
-      setJoinError(result.error);
+    try {
+      const result = await joinSchool(joinCode.trim());
+      if (result.success) {
+        navigate('/app');
+      } else {
+        setJoinError(result.error || 'Invalid invite code.');
+        setJoinLoading(false);
+      }
+    } catch (err) {
+      setJoinError(err.message || 'Something went wrong. Please try again.');
+      setJoinLoading(false);
     }
   }
 
@@ -51,6 +58,8 @@ export default function OnboardingPage() {
       </div>
 
       <div className="onboarding-cards">
+
+        {/* ── Register ── */}
         <div className="onboarding-card">
           <div className="ob-card-icon">🏫</div>
           <h2>Register Your School</h2>
@@ -67,6 +76,7 @@ export default function OnboardingPage() {
                 onChange={e => setRegForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. St. Mary's High School"
                 maxLength={120}
+                autoFocus
               />
             </div>
             <div className="ob-field">
@@ -93,10 +103,9 @@ export default function OnboardingPage() {
           </form>
         </div>
 
-        <div className="onboarding-divider">
-          <span>or</span>
-        </div>
+        <div className="onboarding-divider"><span>or</span></div>
 
+        {/* ── Join ── */}
         <div className="onboarding-card">
           <div className="ob-card-icon">🔑</div>
           <h2>Join a School</h2>
@@ -111,7 +120,7 @@ export default function OnboardingPage() {
                 type="text"
                 value={joinCode}
                 onChange={e => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="e.g. T-ABC1"
+                placeholder="e.g. T-AB12"
                 maxLength={20}
                 autoCapitalize="characters"
               />
@@ -121,6 +130,7 @@ export default function OnboardingPage() {
             </button>
           </form>
         </div>
+
       </div>
     </div>
   );
