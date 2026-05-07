@@ -84,11 +84,10 @@ export function AppProvider({ children }) {
         id: authUser.id, email: authUser.email, name: '',
       };
 
-      // Memberships + schools
-      const { data: membershipRows = [] } = await supabase
-        .from('memberships')
-        .select('*')
-        .eq('user_id', authUser.id);
+      // Memberships — null-safe (Supabase returns null not [] when table missing)
+      const membershipResult = await supabase
+        .from('memberships').select('*').eq('user_id', authUser.id);
+      const membershipRows = membershipResult.data || [];
 
       const schoolIds = membershipRows.map(m => m.school_id);
 
@@ -103,23 +102,19 @@ export function AppProvider({ children }) {
       }
 
       // Parallel load: schools, groups, invite codes
-      const [
-        { data: schoolRows    = [] },
-        { data: groupRows     = [] },
-        { data: inviteRows    = [] },
-      ] = await Promise.all([
+      const [schoolResult, groupResult, inviteResult] = await Promise.all([
         supabase.from('schools').select('*').in('id', schoolIds),
         supabase.from('groups').select('*').in('school_id', schoolIds),
         supabase.from('invite_codes').select('*').in('school_id', schoolIds),
       ]);
+      const schoolRows = schoolResult.data || [];
+      const groupRows  = groupResult.data  || [];
+      const inviteRows = inviteResult.data  || [];
 
       const groupIds = groupRows.map(g => g.id);
 
       // Parallel load: group members + tasks
-      const [
-        { data: gmRows   = [] },
-        { data: taskRows = [] },
-      ] = await Promise.all([
+      const [gmResult, taskResult] = await Promise.all([
         groupIds.length
           ? supabase.from('group_members').select('*').in('group_id', groupIds)
           : Promise.resolve({ data: [] }),
@@ -127,13 +122,13 @@ export function AppProvider({ children }) {
           ? supabase.from('tasks').select('*').in('group_id', groupIds)
           : Promise.resolve({ data: [] }),
       ]);
+      const gmRows   = gmResult.data   || [];
+      const taskRows = taskResult.data || [];
 
       // All user profiles visible to this user
       const userIds = [...new Set([authUser.id, ...membershipRows.map(m => m.user_id), ...gmRows.map(gm => gm.user_id)])];
-      const { data: userRows = [] } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', userIds);
+      const userResult = await supabase.from('profiles').select('*').in('id', userIds);
+      const userRows = userResult.data || [];
 
       // Normalise invite codes: { schoolId: { teacher: code, staff: code, manager: code } }
       const inviteCodes = {};

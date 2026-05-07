@@ -35,7 +35,7 @@ function MoonIcon() {
 
 export default function AppShell() {
   const navigate = useNavigate();
-  const { currentUser, getCurrentUserSchools, getMyNotifications, theme, toggleTheme } = useApp();
+  const { currentUser, getCurrentUserSchools, getMyNotifications, theme, toggleTheme, loading } = useApp();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
