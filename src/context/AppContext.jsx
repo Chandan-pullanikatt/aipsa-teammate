@@ -70,6 +70,11 @@ export function AppProvider({ children }) {
   // ── Load all data for a signed-in user ─────────────────────
 
   async function loadUserData(authUser) {
+    // Safety guard: prevent infinite loading if queries hang (e.g. due to client lock)
+    const fallbackTimeout = setTimeout(() => {
+      setState(prev => { if (prev.loading) return { ...prev, loading: false }; return prev; });
+    }, 8000);
+
     try {
       setState(prev => ({ ...prev, loading: true }));
 
@@ -155,6 +160,8 @@ export function AppProvider({ children }) {
     } catch (err) {
       console.error('loadUserData error:', err?.message || err);
       setState(prev => ({ ...prev, loading: false, loadError: err?.message || 'Failed to load data' }));
+    } finally {
+      clearTimeout(fallbackTimeout);
     }
   }
 
@@ -202,9 +209,10 @@ export function AppProvider({ children }) {
       setState(prev => ({ ...prev, loading: false }));
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        await loadUserData(session.user);
+        // Run asynchronously so we don't block the Supabase auth client (e.g. verifyOtp)
+        loadUserData(session.user).catch(console.error);
       }
       if (event === 'SIGNED_OUT') {
         if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
