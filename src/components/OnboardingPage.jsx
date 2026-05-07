@@ -7,8 +7,6 @@ export default function OnboardingPage() {
   const navigate  = useNavigate();
   const { registerSchool, joinSchool, currentUser } = useApp();
 
-  if (!currentUser) { navigate('/login'); return null; }
-
   const [regForm,    setRegForm]    = useState({ name: '', address: '', type: 'Secondary' });
   const [regLoading, setRegLoading] = useState(false);
   const [regError,   setRegError]   = useState('');
@@ -16,6 +14,8 @@ export default function OnboardingPage() {
   const [joinCode,    setJoinCode]    = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError,   setJoinError]   = useState('');
+
+  if (!currentUser) { navigate('/login'); return null; }
 
   async function handleRegister(e) {
     e.preventDefault();

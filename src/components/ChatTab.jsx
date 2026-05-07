@@ -255,7 +255,7 @@ export default function ChatTab({ groupId, schoolId }) {
     // Optimistic update
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pollOptions: newOptions } : m));
     await supabase.from('messages')
-      .update({ metadata: { ...msg, pollOptions: newOptions } })
+      .update({ metadata: { pollOptions: newOptions } })
       .eq('id', msgId);
   }
 

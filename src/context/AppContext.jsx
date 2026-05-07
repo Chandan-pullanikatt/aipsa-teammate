@@ -154,8 +154,8 @@ export function AppProvider({ children }) {
       subscribeToTasks(groupIds);
 
     } catch (err) {
-      console.error('loadUserData error:', err);
-      setState(prev => ({ ...prev, loading: false }));
+      console.error('loadUserData error:', err?.message || err);
+      setState(prev => ({ ...prev, loading: false, loadError: err?.message || 'Failed to load data' }));
     }
   }
 
@@ -186,16 +186,25 @@ export function AppProvider({ children }) {
   // ── Auth state listener ───────────────────────────────────
 
   useEffect(() => {
+    // Timeout guard: if getSession never resolves, stop the spinner after 8s
+    const timeoutId = setTimeout(() => {
+      setState(prev => { if (prev.loading) return { ...prev, loading: false }; return prev; });
+    }, 8000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeoutId);
       if (session?.user) {
         loadUserData(session.user);
       } else {
         setState(prev => ({ ...prev, loading: false }));
       }
+    }).catch(() => {
+      clearTimeout(timeoutId);
+      setState(prev => ({ ...prev, loading: false }));
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         await loadUserData(session.user);
       }
       if (event === 'SIGNED_OUT') {

@@ -35,8 +35,8 @@ function AppRoutes() {
       <ThemeSync />
       <Routes>
         <Route path="/"           element={<LandingPage theme={theme} toggleTheme={toggleTheme} />} />
-        <Route path="/login"      element={<LoginPage theme={theme} toggleTheme={toggleTheme} />} />
-        <Route path="/otp"        element={<OtpPage />} />
+        <Route path="/login"      element={!loading && currentUser ? <Navigate to="/app" replace /> : <LoginPage theme={theme} toggleTheme={toggleTheme} />} />
+        <Route path="/otp"        element={!loading && currentUser ? <Navigate to="/app" replace /> : <OtpPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/app"        element={<AppShell />} />
         <Route path="/dashboard"  element={<AppShell />} />

@@ -47,7 +47,7 @@ export default function GroupView({ group, schoolId }) {
         ))}
       </div>
       <div className="group-content">
-        {tab === 'chat' && <ChatTab groupId={group.id} />}
+        {tab === 'chat' && <ChatTab groupId={group.id} schoolId={schoolId} />}
         {tab === 'tasks' && <TasksTab groupId={group.id} schoolId={schoolId} />}
         {tab === 'reports' && <ReportsTab groupId={group.id} />}
       </div>
