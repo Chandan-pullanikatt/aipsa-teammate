@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './components/LandingPage';
@@ -19,7 +19,17 @@ function ThemeSync() {
 }
 
 function AppRoutes() {
-  const { theme, toggleTheme } = useApp();
+  const { theme, toggleTheme, currentUser, loading } = useApp();
+  const navigate = useNavigate();
+
+  // When Supabase magic link is clicked, user lands on '/' already logged in.
+  // Redirect them straight into the app.
+  useEffect(() => {
+    if (!loading && currentUser && window.location.pathname === '/') {
+      navigate('/app', { replace: true });
+    }
+  }, [currentUser, loading, navigate]);
+
   return (
     <>
       <ThemeSync />
