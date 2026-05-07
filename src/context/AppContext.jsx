@@ -243,23 +243,23 @@ export function AppProvider({ children }) {
   async function registerSchool(name, address, type) {
     if (!state.currentUser) return null;
 
-    const { data: school, error: sErr } = await supabase
-      .from('schools')
-      .insert({ name: name.trim(), address: address.trim(), type })
-      .select()
-      .single();
+    // Generate school ID client-side so we can insert membership immediately
+    // without needing to SELECT the school back (avoids RLS chicken-and-egg)
+    const schoolId = crypto.randomUUID();
+    const school = { id: schoolId, name: name.trim(), address: address.trim(), type };
+
+    const { error: sErr } = await supabase.from('schools').insert(school);
     if (sErr) throw sErr;
 
     const { error: mErr } = await supabase
       .from('memberships')
-      .insert({ user_id: state.currentUser.id, school_id: school.id, role: 'Owner' });
+      .insert({ user_id: state.currentUser.id, school_id: schoolId, role: 'Owner' });
     if (mErr) throw mErr;
 
-    // Create the three invite codes
     const codes = [
-      { school_id: school.id, role_key: 'teacher', code: genCode('T') },
-      { school_id: school.id, role_key: 'staff',   code: genCode('S') },
-      { school_id: school.id, role_key: 'manager', code: genCode('M') },
+      { school_id: schoolId, role_key: 'teacher', code: genCode('T') },
+      { school_id: schoolId, role_key: 'staff',   code: genCode('S') },
+      { school_id: schoolId, role_key: 'manager', code: genCode('M') },
     ];
     await supabase.from('invite_codes').insert(codes);
 
@@ -268,12 +268,12 @@ export function AppProvider({ children }) {
 
     setState(prev => ({
       ...prev,
-      schools:     [...prev.schools, fmtSchool(school)],
-      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId: school.id, role: 'Owner' }],
-      inviteCodes: { ...prev.inviteCodes, [school.id]: invObj },
+      schools:     [...prev.schools, school],
+      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId, role: 'Owner' }],
+      inviteCodes: { ...prev.inviteCodes, [schoolId]: invObj },
     }));
 
-    return fmtSchool(school);
+    return school;
   }
 
   async function updateSchool(schoolId, edits) {
@@ -368,30 +368,32 @@ export function AppProvider({ children }) {
   // ── Groups ────────────────────────────────────────────────
 
   async function addGroup(schoolId, name, parentId = null) {
-    const { data: grp, error } = await supabase
-      .from('groups')
-      .insert({ school_id: schoolId, name: name.trim(), parent_id: parentId })
-      .select()
-      .single();
+    // Generate ID client-side to avoid post-INSERT SELECT RLS issues
+    const groupId = crypto.randomUUID();
+    const grp = { id: groupId, schoolId, name: name.trim(), parentId: parentId || null };
+
+    const { error } = await supabase.from('groups').insert({
+      id: groupId, school_id: schoolId, name: name.trim(), parent_id: parentId || null,
+    });
     if (error) throw error;
 
     // Add all school members to the new group
     const schoolMembers = state.memberships.filter(m => m.schoolId === schoolId);
     if (schoolMembers.length) {
       await supabase.from('group_members').insert(
-        schoolMembers.map(m => ({ user_id: m.userId, group_id: grp.id }))
+        schoolMembers.map(m => ({ user_id: m.userId, group_id: groupId }))
       );
     }
 
     setState(prev => ({
       ...prev,
-      groups: [...prev.groups, fmtGroup(grp)],
+      groups: [...prev.groups, grp],
       groupMembers: [
         ...prev.groupMembers,
-        ...schoolMembers.map(m => ({ userId: m.userId, groupId: grp.id })),
+        ...schoolMembers.map(m => ({ userId: m.userId, groupId })),
       ],
     }));
-    return fmtGroup(grp);
+    return grp;
   }
 
   async function renameGroup(groupId, newName) {

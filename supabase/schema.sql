@@ -1,11 +1,10 @@
 -- ============================================================
--- AIPSA Office Management System — Supabase Schema
+-- AIPSA Office Management System — Supabase Schema v3
 -- Safe to run multiple times — drops everything first
 -- ============================================================
 
 -- ── 0. CLEAN SLATE ───────────────────────────────────────────
 
--- Drop tables in reverse dependency order (CASCADE removes policies + triggers automatically)
 DROP TABLE IF EXISTS public.messages      CASCADE;
 DROP TABLE IF EXISTS public.tasks         CASCADE;
 DROP TABLE IF EXISTS public.group_members CASCADE;
@@ -15,10 +14,11 @@ DROP TABLE IF EXISTS public.memberships   CASCADE;
 DROP TABLE IF EXISTS public.schools       CASCADE;
 DROP TABLE IF EXISTS public.profiles      CASCADE;
 
--- Drop trigger function
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.handle_new_user()       CASCADE;
+DROP FUNCTION IF EXISTS public.get_my_school_ids()     CASCADE;
+DROP FUNCTION IF EXISTS public.is_school_member(UUID)  CASCADE;
+DROP FUNCTION IF EXISTS public.is_school_owner(UUID)   CASCADE;
 
--- Drop storage policies (safe if they don't exist)
 DROP POLICY IF EXISTS "chat_images_select" ON storage.objects;
 DROP POLICY IF EXISTS "chat_images_insert" ON storage.objects;
 DROP POLICY IF EXISTS "chat_images_delete" ON storage.objects;
@@ -96,7 +96,40 @@ CREATE TABLE public.messages (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── 2. ROW LEVEL SECURITY ──────────────────────────────────────
+-- ── 2. SECURITY DEFINER HELPERS ───────────────────────────────
+-- These functions bypass RLS to avoid infinite recursion in policies.
+
+CREATE OR REPLACE FUNCTION public.get_my_school_ids()
+RETURNS SETOF UUID
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT school_id FROM memberships WHERE user_id = auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_school_member(p_school_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM memberships
+    WHERE school_id = p_school_id AND user_id = auth.uid()
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_school_owner(p_school_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM memberships
+    WHERE school_id = p_school_id AND user_id = auth.uid() AND role = 'Owner'
+  );
+$$;
+
+-- ── 3. ROW LEVEL SECURITY ──────────────────────────────────────
 
 ALTER TABLE public.profiles      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schools       ENABLE ROW LEVEL SECURITY;
@@ -107,60 +140,62 @@ ALTER TABLE public.group_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages      ENABLE ROW LEVEL SECURITY;
 
--- Profiles: all authenticated users can read; users manage their own
+-- Profiles
 CREATE POLICY "profiles_select" ON public.profiles FOR SELECT TO authenticated USING (true);
 CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
--- Schools: members can read; owners can write
+-- Schools: all authenticated can INSERT (owner membership added right after in app code)
 CREATE POLICY "schools_select" ON public.schools FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = id AND m.user_id = auth.uid())
+  public.is_school_member(id)
 );
 CREATE POLICY "schools_insert" ON public.schools FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "schools_update" ON public.schools FOR UPDATE TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_owner(id)
+);
+CREATE POLICY "schools_delete" ON public.schools FOR DELETE TO authenticated USING (
+  public.is_school_owner(id)
 );
 
--- Memberships
+-- Memberships: uses helper function — NO self-referential subquery (prevents recursion)
 CREATE POLICY "memberships_select" ON public.memberships FOR SELECT TO authenticated USING (
-  user_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.memberships m2 WHERE m2.school_id = school_id AND m2.user_id = auth.uid())
+  user_id = auth.uid() OR school_id IN (SELECT public.get_my_school_ids())
 );
-CREATE POLICY "memberships_insert" ON public.memberships FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+CREATE POLICY "memberships_insert" ON public.memberships FOR INSERT TO authenticated WITH CHECK (
+  user_id = auth.uid()
+);
 CREATE POLICY "memberships_delete" ON public.memberships FOR DELETE TO authenticated USING (
-  user_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.memberships m2 WHERE m2.school_id = school_id AND m2.user_id = auth.uid() AND m2.role = 'Owner')
+  user_id = auth.uid() OR public.is_school_owner(school_id)
 );
 
--- Invite codes: all authenticated can read (needed to join); owners can write
+-- Invite codes
 CREATE POLICY "invite_codes_select" ON public.invite_codes FOR SELECT TO authenticated USING (true);
 CREATE POLICY "invite_codes_insert" ON public.invite_codes FOR INSERT TO authenticated WITH CHECK (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_owner(school_id)
 );
 CREATE POLICY "invite_codes_update" ON public.invite_codes FOR UPDATE TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_owner(school_id)
 );
 
--- Groups: school members read; owners write
+-- Groups
 CREATE POLICY "groups_select" ON public.groups FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid())
+  public.is_school_member(school_id)
 );
 CREATE POLICY "groups_insert" ON public.groups FOR INSERT TO authenticated WITH CHECK (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_member(school_id)
 );
 CREATE POLICY "groups_update" ON public.groups FOR UPDATE TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_owner(school_id)
 );
 CREATE POLICY "groups_delete" ON public.groups FOR DELETE TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.memberships m WHERE m.school_id = school_id AND m.user_id = auth.uid() AND m.role = 'Owner')
+  public.is_school_owner(school_id)
 );
 
 -- Group members
 CREATE POLICY "group_members_select" ON public.group_members FOR SELECT TO authenticated USING (
   EXISTS (
     SELECT 1 FROM public.groups g
-    JOIN public.memberships m ON m.school_id = g.school_id
-    WHERE g.id = group_id AND m.user_id = auth.uid()
+    WHERE g.id = group_id AND public.is_school_member(g.school_id)
   )
 );
 CREATE POLICY "group_members_insert" ON public.group_members FOR INSERT TO authenticated WITH CHECK (true);
@@ -168,17 +203,16 @@ CREATE POLICY "group_members_delete" ON public.group_members FOR DELETE TO authe
   user_id = auth.uid() OR
   EXISTS (
     SELECT 1 FROM public.groups g
-    JOIN public.memberships m ON m.school_id = g.school_id
-    WHERE g.id = group_id AND m.user_id = auth.uid() AND m.role = 'Owner'
+    WHERE g.id = group_id AND public.is_school_owner(g.school_id)
   )
 );
 
--- Tasks: group members fully manage
+-- Tasks
 CREATE POLICY "tasks_all" ON public.tasks FOR ALL TO authenticated
   USING (EXISTS (SELECT 1 FROM public.group_members gm WHERE gm.group_id = group_id AND gm.user_id = auth.uid()))
   WITH CHECK (EXISTS (SELECT 1 FROM public.group_members gm WHERE gm.group_id = group_id AND gm.user_id = auth.uid()));
 
--- Messages: group members fully manage
+-- Messages
 CREATE POLICY "messages_select" ON public.messages FOR SELECT TO authenticated USING (
   EXISTS (SELECT 1 FROM public.group_members gm WHERE gm.group_id = group_id AND gm.user_id = auth.uid())
 );
@@ -192,12 +226,11 @@ CREATE POLICY "messages_delete" ON public.messages FOR DELETE TO authenticated U
   sender_id = auth.uid() OR
   EXISTS (
     SELECT 1 FROM public.groups g
-    JOIN public.memberships m ON m.school_id = g.school_id
-    WHERE g.id = group_id AND m.user_id = auth.uid() AND m.role = 'Owner'
+    WHERE g.id = group_id AND public.is_school_owner(g.school_id)
   )
 );
 
--- ── 3. TRIGGER: auto-create profile on signup ──────────────────
+-- ── 4. TRIGGER: auto-create profile on signup ──────────────────
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -214,7 +247,13 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- ── 4. REALTIME ───────────────────────────────────────────────
+-- Backfill profiles for any existing auth users
+INSERT INTO public.profiles (id, email, name)
+SELECT id, email, ''
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
+-- ── 5. REALTIME ───────────────────────────────────────────────
 
 DO $$
 BEGIN
@@ -226,7 +265,7 @@ BEGIN
   END IF;
 END $$;
 
--- ── 5. STORAGE ────────────────────────────────────────────────
+-- ── 6. STORAGE ────────────────────────────────────────────────
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('chat-images', 'chat-images', true, 524288, ARRAY['image/jpeg','image/png','image/gif','image/webp'])
