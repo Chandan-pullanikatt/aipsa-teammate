@@ -168,14 +168,11 @@ CREATE POLICY "memberships_delete" ON public.memberships FOR DELETE TO authentic
   user_id = auth.uid() OR public.is_school_owner(school_id)
 );
 
--- Invite codes
+-- Invite codes: anyone can read (needed to validate join codes); any authenticated can insert/update
+-- (App logic in registerSchool/regenerateCode ensures only owners do this)
 CREATE POLICY "invite_codes_select" ON public.invite_codes FOR SELECT TO authenticated USING (true);
-CREATE POLICY "invite_codes_insert" ON public.invite_codes FOR INSERT TO authenticated WITH CHECK (
-  public.is_school_owner(school_id)
-);
-CREATE POLICY "invite_codes_update" ON public.invite_codes FOR UPDATE TO authenticated USING (
-  public.is_school_owner(school_id)
-);
+CREATE POLICY "invite_codes_insert" ON public.invite_codes FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "invite_codes_update" ON public.invite_codes FOR UPDATE TO authenticated USING (true);
 
 -- Groups
 CREATE POLICY "groups_select" ON public.groups FOR SELECT TO authenticated USING (

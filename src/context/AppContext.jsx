@@ -261,7 +261,8 @@ export function AppProvider({ children }) {
       { school_id: schoolId, role_key: 'staff',   code: genCode('S') },
       { school_id: schoolId, role_key: 'manager', code: genCode('M') },
     ];
-    await supabase.from('invite_codes').insert(codes);
+    const { error: cErr } = await supabase.from('invite_codes').insert(codes);
+    if (cErr) throw cErr;
 
     const invObj = {};
     codes.forEach(c => { invObj[c.role_key] = c.code; });
@@ -303,13 +304,14 @@ export function AppProvider({ children }) {
   async function joinSchool(code) {
     if (!state.currentUser) return { success: false, error: 'Not logged in' };
 
-    const { data: invRow } = await supabase
+    const { data: invRow, error: lookupErr } = await supabase
       .from('invite_codes')
       .select('*')
       .eq('code', code.trim())
-      .single();
+      .maybeSingle();
 
-    if (!invRow) return { success: false, error: 'Invalid invite code. Please check and try again.' };
+    if (lookupErr) return { success: false, error: 'Could not verify invite code. Please try again.' };
+    if (!invRow)   return { success: false, error: 'Invalid invite code. Please check and try again.' };
 
     const alreadyMember = state.memberships.some(
       m => m.userId === state.currentUser.id && m.schoolId === invRow.school_id
