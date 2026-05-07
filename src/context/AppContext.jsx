@@ -69,9 +69,9 @@ export function AppProvider({ children }) {
 
   // ── Load all data for a signed-in user ─────────────────────
 
-  async function loadUserData(authUser) {
+  async function loadUserData(authUser, silent = false) {
     // Safety guard: prevent infinite loading if queries hang (e.g. due to client lock)
-    const fallbackTimeout = setTimeout(() => {
+    const fallbackTimeout = silent ? null : setTimeout(() => {
       setState(prev => {
         if (!prev.loading) return prev;
         return {
@@ -83,7 +83,7 @@ export function AppProvider({ children }) {
     }, 8000);
 
     try {
-      setState(prev => ({ ...prev, loading: true }));
+      if (!silent) setState(prev => ({ ...prev, loading: true }));
 
       // Round 1 — profile + memberships in parallel (independent queries)
       const [profileResult, membershipResult] = await Promise.all([
@@ -173,7 +173,7 @@ export function AppProvider({ children }) {
         loadError: err?.message || 'Failed to load data',
       }));
     } finally {
-      clearTimeout(fallbackTimeout);
+      if (fallbackTimeout) clearTimeout(fallbackTimeout);
     }
   }
 
@@ -280,17 +280,18 @@ export function AppProvider({ children }) {
     const { error: sErr } = await supabase.from('schools').insert(school);
     if (sErr) throw sErr;
 
-    const { error: mErr } = await supabase
-      .from('memberships')
-      .insert({ user_id: state.currentUser.id, school_id: schoolId, role: 'Owner' });
-    if (mErr) throw mErr;
-
     const codes = [
       { school_id: schoolId, role_key: 'teacher', code: genCode('T') },
       { school_id: schoolId, role_key: 'staff',   code: genCode('S') },
       { school_id: schoolId, role_key: 'manager', code: genCode('M') },
     ];
-    const { error: cErr } = await supabase.from('invite_codes').insert(codes);
+
+    // membership + invite_codes are independent — run in parallel
+    const [{ error: mErr }, { error: cErr }] = await Promise.all([
+      supabase.from('memberships').insert({ user_id: state.currentUser.id, school_id: schoolId, role: 'Owner' }),
+      supabase.from('invite_codes').insert(codes),
+    ]);
+    if (mErr) throw mErr;
     if (cErr) throw cErr;
 
     const invObj = {};
@@ -355,28 +356,33 @@ export function AppProvider({ children }) {
       .insert({ user_id: state.currentUser.id, school_id: invRow.school_id, role });
     if (mErr) return { success: false, error: mErr.message };
 
-    // Add user to all existing groups in the school
-    const schoolGroupIds = state.groups
-      .filter(g => g.schoolId === invRow.school_id)
-      .map(g => g.id);
+    // Fetch school data + its groups in parallel (we're not a member yet so state won't have them)
+    const [{ data: schoolRow }, { data: groupRows }] = await Promise.all([
+      supabase.from('schools').select('*').eq('id', invRow.school_id).single(),
+      supabase.from('groups').select('*').eq('school_id', invRow.school_id),
+    ]);
+    const allGroupIds = (groupRows || []).map(g => g.id);
 
-    if (schoolGroupIds.length) {
+    // Add user to all groups in the school
+    if (allGroupIds.length) {
       await supabase.from('group_members').insert(
-        schoolGroupIds.map(gid => ({ user_id: state.currentUser.id, group_id: gid }))
+        allGroupIds.map(gid => ({ user_id: state.currentUser.id, group_id: gid }))
       );
     }
 
     setState(prev => ({
       ...prev,
-      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId: invRow.school_id, role }],
+      schools:      schoolRow ? [...prev.schools, fmtSchool(schoolRow)] : prev.schools,
+      groups:       [...prev.groups, ...(groupRows || []).map(fmtGroup)],
+      memberships:  [...prev.memberships, { userId: state.currentUser.id, schoolId: invRow.school_id, role }],
       groupMembers: [
         ...prev.groupMembers,
-        ...schoolGroupIds.map(gid => ({ userId: state.currentUser.id, groupId: gid })),
+        ...allGroupIds.map(gid => ({ userId: state.currentUser.id, groupId: gid })),
       ],
     }));
 
-    // Reload to get school data
-    await loadUserData({ id: state.currentUser.id, email: state.currentUser.email });
+    // Silently refresh tasks + member profiles in background — no loading spinner
+    loadUserData({ id: state.currentUser.id, email: state.currentUser.email }, true).catch(console.error);
     return { success: true, schoolId: invRow.school_id };
   }
 
