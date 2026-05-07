@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import './OtpPage.css';
 
+const OTP_LENGTH = 6;
+
 export default function OtpPage() {
-  const [digits, setDigits]     = useState(['', '', '', '', '', '']);
-  const [timer, setTimer]       = useState(60);
+  const [digits, setDigits]       = useState(Array(OTP_LENGTH).fill(''));
+  const [timer, setTimer]         = useState(60);
   const [canResend, setCanResend] = useState(false);
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [error, setError]         = useState('');
+  const [loading, setLoading]     = useState(false);
   const refs    = useRef([]);
   const navigate = useNavigate();
 
@@ -30,7 +32,7 @@ export default function OtpPage() {
     const next = [...digits];
     next[idx] = val;
     setDigits(next);
-    if (val && idx < 5) refs.current[idx + 1]?.focus();
+    if (val && idx < OTP_LENGTH - 1) refs.current[idx + 1]?.focus();
   }
 
   function handleKeyDown(idx, e) {
@@ -39,56 +41,70 @@ export default function OtpPage() {
     }
   }
 
+  // Handle paste — fill all boxes at once
+  function handlePaste(e) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = Array(OTP_LENGTH).fill('');
+    pasted.split('').forEach((ch, i) => { next[i] = ch; });
+    setDigits(next);
+    const focusIdx = Math.min(pasted.length, OTP_LENGTH - 1);
+    refs.current[focusIdx]?.focus();
+  }
+
   async function handleVerify(e) {
     e.preventDefault();
     const token = digits.join('');
-    if (token.length < 6) {
-      setError('Please enter the complete 6-digit code.');
+    if (token.length < OTP_LENGTH) {
+      setError(`Please enter the complete ${OTP_LENGTH}-digit code.`);
       return;
     }
+
     setLoading(true);
     setError('');
 
-    const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email',
-    });
+    try {
+      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      });
 
-    if (verifyErr) {
+      if (verifyErr) {
+        setLoading(false);
+        setError('Invalid or expired code. Please request a new one.');
+        setDigits(Array(OTP_LENGTH).fill(''));
+        refs.current[0]?.focus();
+        return;
+      }
+
+      localStorage.removeItem('tm_pending_email');
       setLoading(false);
-      setError(verifyErr.message || 'Invalid or expired code. Please try again.');
-      setDigits(['', '', '', '', '', '']);
-      refs.current[0]?.focus();
-      return;
+      navigate('/app', { replace: true }); // AppShell handles no-school redirect
+
+    } catch (err) {
+      setLoading(false);
+      setError('Connection error. Please check your network and try again.');
     }
-
-    localStorage.removeItem('tm_pending_email');
-
-    // Check if user has any school memberships to decide where to redirect
-    const { data: memberships } = await supabase
-      .from('memberships')
-      .select('id')
-      .eq('user_id', data.user.id)
-      .limit(1);
-
-    setLoading(false);
-    navigate(memberships?.length ? '/app' : '/onboarding', { replace: true });
   }
 
   async function handleResend() {
     setTimer(60);
     setCanResend(false);
-    setDigits(['', '', '', '', '', '']);
+    setDigits(Array(OTP_LENGTH).fill(''));
     setError('');
 
-    const { error: otpErr } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
-    });
-
-    if (otpErr) setError(otpErr.message || 'Failed to resend. Please try again.');
-    else refs.current[0]?.focus();
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
+      });
+      if (otpErr) setError(otpErr.message || 'Failed to resend. Please try again.');
+      else refs.current[0]?.focus();
+    } catch {
+      setError('Failed to resend. Please try again.');
+    }
   }
 
   function handleBack() {
@@ -104,7 +120,7 @@ export default function OtpPage() {
         <div className="otp-mail-icon">✉</div>
         <h2>Check your email</h2>
         <p className="otp-subtitle">
-          We sent a 6-digit code to<br />
+          We sent a {OTP_LENGTH}-digit code to<br />
           <strong>{email}</strong>
         </p>
 
@@ -122,12 +138,13 @@ export default function OtpPage() {
                 value={d}
                 onChange={e => handleChange(i, e.target.value)}
                 onKeyDown={e => handleKeyDown(i, e)}
+                onPaste={handlePaste}
                 className={`otp-box${d ? ' filled' : ''}`}
               />
             ))}
           </div>
 
-          <button type="submit" className="otp-btn" disabled={loading}>
+          <button type="submit" className="otp-btn" disabled={loading || digits.join('').length < OTP_LENGTH}>
             {loading ? <span className="otp-spinner" /> : 'Verify & Continue'}
           </button>
         </form>
