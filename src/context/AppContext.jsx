@@ -72,7 +72,14 @@ export function AppProvider({ children }) {
   async function loadUserData(authUser) {
     // Safety guard: prevent infinite loading if queries hang (e.g. due to client lock)
     const fallbackTimeout = setTimeout(() => {
-      setState(prev => { if (prev.loading) return { ...prev, loading: false }; return prev; });
+      setState(prev => {
+        if (!prev.loading) return prev;
+        return {
+          ...prev,
+          loading: false,
+          currentUser: prev.currentUser || { id: authUser.id, email: authUser.email, name: '' },
+        };
+      });
     }, 8000);
 
     try {
@@ -159,7 +166,12 @@ export function AppProvider({ children }) {
 
     } catch (err) {
       console.error('loadUserData error:', err?.message || err);
-      setState(prev => ({ ...prev, loading: false, loadError: err?.message || 'Failed to load data' }));
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        currentUser: prev.currentUser || { id: authUser.id, email: authUser.email, name: '' },
+        loadError: err?.message || 'Failed to load data',
+      }));
     } finally {
       clearTimeout(fallbackTimeout);
     }
@@ -211,8 +223,9 @@ export function AppProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        // Run asynchronously so we don't block the Supabase auth client (e.g. verifyOtp)
-        loadUserData(session.user).catch(console.error);
+        // Defer via setTimeout so the Supabase auth client finishes its internal lock
+        // before we make any DB calls (avoids silent query failures after verifyOtp)
+        setTimeout(() => loadUserData(session.user).catch(console.error), 0);
       }
       if (event === 'SIGNED_OUT') {
         if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
