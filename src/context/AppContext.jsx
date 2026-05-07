@@ -73,23 +73,18 @@ export function AppProvider({ children }) {
     try {
       setState(prev => ({ ...prev, loading: true }));
 
-      // Profile
-      const { data: profileRow } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
+      // Round 1 — profile + memberships in parallel (independent queries)
+      const [profileResult, membershipResult] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', authUser.id).single(),
+        supabase.from('memberships').select('*').eq('user_id', authUser.id),
+      ]);
 
-      const profile = profileRow ? fmtProfile(profileRow) : {
-        id: authUser.id, email: authUser.email, name: '',
-      };
-
-      // Memberships — null-safe (Supabase returns null not [] when table missing)
-      const membershipResult = await supabase
-        .from('memberships').select('*').eq('user_id', authUser.id);
+      const profileRow    = profileResult.data;
+      const profile       = profileRow
+        ? fmtProfile(profileRow)
+        : { id: authUser.id, email: authUser.email, name: '' };
       const membershipRows = membershipResult.data || [];
-
-      const schoolIds = membershipRows.map(m => m.school_id);
+      const schoolIds      = membershipRows.map(m => m.school_id);
 
       if (schoolIds.length === 0) {
         setState(prev => ({
@@ -101,7 +96,7 @@ export function AppProvider({ children }) {
         return;
       }
 
-      // Parallel load: schools, groups, invite codes
+      // Round 2 — schools, groups, invite codes in parallel
       const [schoolResult, groupResult, inviteResult] = await Promise.all([
         supabase.from('schools').select('*').in('id', schoolIds),
         supabase.from('groups').select('*').in('school_id', schoolIds),
@@ -110,25 +105,29 @@ export function AppProvider({ children }) {
       const schoolRows = schoolResult.data || [];
       const groupRows  = groupResult.data  || [];
       const inviteRows = inviteResult.data  || [];
+      const groupIds   = groupRows.map(g => g.id);
 
-      const groupIds = groupRows.map(g => g.id);
-
-      // Parallel load: group members + tasks
-      const [gmResult, taskResult] = await Promise.all([
+      // Round 3 — group members, tasks, and all visible user profiles in parallel
+      // We already know membership user IDs so we can build the full set here.
+      const knownUserIds = [...new Set([authUser.id, ...membershipRows.map(m => m.user_id)])];
+      const [gmResult, taskResult, userResult] = await Promise.all([
         groupIds.length
           ? supabase.from('group_members').select('*').in('group_id', groupIds)
           : Promise.resolve({ data: [] }),
         groupIds.length
           ? supabase.from('tasks').select('*').in('group_id', groupIds)
           : Promise.resolve({ data: [] }),
+        supabase.from('profiles').select('*').in('id', knownUserIds),
       ]);
       const gmRows   = gmResult.data   || [];
       const taskRows = taskResult.data || [];
 
-      // All user profiles visible to this user
-      const userIds = [...new Set([authUser.id, ...membershipRows.map(m => m.user_id), ...gmRows.map(gm => gm.user_id)])];
-      const userResult = await supabase.from('profiles').select('*').in('id', userIds);
-      const userRows = userResult.data || [];
+      // Top-up: fetch profiles for any group members not already in knownUserIds
+      const extraIds = [...new Set(gmRows.map(gm => gm.user_id))].filter(id => !knownUserIds.includes(id));
+      const extraRows = extraIds.length
+        ? (await supabase.from('profiles').select('*').in('id', extraIds)).data || []
+        : [];
+      const userRows = [...(userResult.data || []), ...extraRows];
 
       // Normalise invite codes: { schoolId: { teacher: code, staff: code, manager: code } }
       const inviteCodes = {};
