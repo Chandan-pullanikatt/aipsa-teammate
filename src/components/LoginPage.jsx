@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, ArrowLeft, Loader } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import api from '../lib/api';
 
 import './LoginPage.css';
 import logo from '../assets/teammate_logo.png';
@@ -19,20 +19,17 @@ const LoginPage = () => {
     setIsLoading(true);
     setError('');
 
-    const { error: otpErr } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: true },
-    });
-
-    setIsLoading(false);
-
-    if (otpErr) {
-      setError(otpErr.message || 'Failed to send OTP. Please try again.');
-      return;
+    try {
+      await api.post('/auth/send-otp', { email: email.trim().toLowerCase() });
+      localStorage.setItem('tm_pending_email', email.trim().toLowerCase());
+      navigate('/otp');
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || 'Failed to send OTP. Please try again.',
+      );
+    } finally {
+      setIsLoading(false);
     }
-
-    localStorage.setItem('tm_pending_email', email.trim().toLowerCase());
-    navigate('/otp');
   };
 
   return (

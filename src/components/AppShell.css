@@ -174,7 +174,35 @@
 }
 
 .notif-title { font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin: 0 0 0.15rem; }
-.notif-due   { font-size: 0.78rem; color: var(--danger); margin: 0; }
+.notif-msg   { font-size: 0.78rem; color: var(--text-muted); margin: 0 0 0.25rem; line-height: 1.3; }
+.notif-due   { font-size: 0.72rem; color: var(--text-placeholder); margin: 0; }
+
+.notif-item.warning .notif-due { color: var(--danger); }
+.notif-dot.warning { background: var(--danger); }
+.notif-dot.success { background: #10b981; }
+.notif-dot.info    { background: var(--primary); }
+
+.notif-read-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  transition: all 0.15s;
+}
+
+.notif-read-btn:hover {
+  background: var(--primary-tint);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 /* ── Role badge ── */
 .topbar-role-badge {
@@ -293,6 +321,126 @@
 }
 
 .appshell-empty p { font-size: 0.9rem; color: var(--text-muted); }
+
+/* ── Owner Overview ── */
+.owner-overview {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+  text-align: left;
+  overflow-y: auto;
+}
+
+.owner-overview-header {
+  margin-bottom: 2.5rem;
+}
+
+.owner-overview-header h3 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+}
+
+.owner-overview-header p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.owner-members-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.owner-members-card h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+}
+
+.owner-members-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.owner-member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  transition: transform 0.12s, border-color 0.12s;
+}
+
+.owner-member-row:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.omr-avatar {
+  width: 38px;
+  height: 38px;
+  background: var(--primary-tint);
+  color: var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.omr-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.omr-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.omr-role {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--primary); /* Default to primary, specific roles below */
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.1rem;
+}
+
+.omr-role.owner   { color: var(--role-owner); }
+.omr-role.teacher { color: var(--role-teacher); }
+.omr-role.manager { color: var(--role-manager); }
+.omr-role.staff   { color: var(--role-staff); }
+
+.omr-email {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
 
 /* ── No school ── */
 .appshell-no-school {

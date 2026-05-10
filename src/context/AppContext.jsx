@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import api from '../lib/api';
+import { connectSocket, disconnectSocket, getSocket } from '../lib/socket';
 
 const AppContext = createContext(null);
 
@@ -7,45 +8,6 @@ export function useApp() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
-}
-
-// ── Data formatters (DB snake_case → app camelCase) ───────────
-
-function fmtProfile(row) {
-  return { id: row.id, email: row.email, name: row.name || '' };
-}
-
-function fmtSchool(row) {
-  return { id: row.id, name: row.name, address: row.address || '', type: row.type || 'Secondary' };
-}
-
-function fmtMembership(row) {
-  return { userId: row.user_id, schoolId: row.school_id, role: row.role };
-}
-
-function fmtGroup(row) {
-  return { id: row.id, schoolId: row.school_id, name: row.name, parentId: row.parent_id || null };
-}
-
-function fmtGroupMember(row) {
-  return { userId: row.user_id, groupId: row.group_id };
-}
-
-function fmtTask(row) {
-  return {
-    id:         row.id,
-    groupId:    row.group_id,
-    title:      row.title,
-    assignedTo: row.assigned_to,
-    dueDate:    row.due_date,
-    priority:   row.priority,
-    status:     row.status,
-    createdBy:  row.created_by,
-  };
-}
-
-function genCode(prefix) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
 // ── Initial state ────────────────────────────────────────────
@@ -59,184 +21,164 @@ const INITIAL = {
   tasks:        [],
   memberships:  [],
   inviteCodes:  {},
+  notifications: [],
   theme:        localStorage.getItem('tm_theme') || 'light',
   loading:      true,
 };
 
 export function AppProvider({ children }) {
   const [state, setState] = useState(INITIAL);
-  const taskSubRef = useRef(null);
+  const taskListenersAttached = useRef(false);
 
   // ── Load all data for a signed-in user ─────────────────────
 
-  async function loadUserData(authUser, silent = false) {
-    // Safety guard: prevent infinite loading if queries hang (e.g. due to client lock)
+  async function loadUserData(silent = false) {
     const fallbackTimeout = silent ? null : setTimeout(() => {
       setState(prev => {
         if (!prev.loading) return prev;
-        return {
-          ...prev,
-          loading: false,
-          currentUser: prev.currentUser || { id: authUser.id, email: authUser.email, name: '' },
-        };
+        return { ...prev, loading: false };
       });
     }, 8000);
 
     try {
       if (!silent) setState(prev => ({ ...prev, loading: true }));
 
-      // Round 1 — profile + memberships in parallel (independent queries)
-      const [profileResult, membershipResult] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', authUser.id).single(),
-        supabase.from('memberships').select('*').eq('user_id', authUser.id),
-      ]);
-
-      const profileRow    = profileResult.data;
-      const profile       = profileRow
-        ? fmtProfile(profileRow)
-        : { id: authUser.id, email: authUser.email, name: '' };
-      const membershipRows = membershipResult.data || [];
-      const schoolIds      = membershipRows.map(m => m.school_id);
-
-      if (schoolIds.length === 0) {
-        setState(prev => ({
-          ...prev, currentUser: profile,
-          schools: [], users: [profile], groups: [],
-          groupMembers: [], tasks: [], memberships: [],
-          inviteCodes: {}, loading: false,
-        }));
-        return;
-      }
-
-      // Round 2 — schools, groups, invite codes in parallel
-      const [schoolResult, groupResult, inviteResult] = await Promise.all([
-        supabase.from('schools').select('*').in('id', schoolIds),
-        supabase.from('groups').select('*').in('school_id', schoolIds),
-        supabase.from('invite_codes').select('*').in('school_id', schoolIds),
-      ]);
-      const schoolRows = schoolResult.data || [];
-      const groupRows  = groupResult.data  || [];
-      const inviteRows = inviteResult.data  || [];
-      const groupIds   = groupRows.map(g => g.id);
-
-      // Round 3 — group members, tasks, and all visible user profiles in parallel
-      // We already know membership user IDs so we can build the full set here.
-      const knownUserIds = [...new Set([authUser.id, ...membershipRows.map(m => m.user_id)])];
-      const [gmResult, taskResult, userResult] = await Promise.all([
-        groupIds.length
-          ? supabase.from('group_members').select('*').in('group_id', groupIds)
-          : Promise.resolve({ data: [] }),
-        groupIds.length
-          ? supabase.from('tasks').select('*').in('group_id', groupIds)
-          : Promise.resolve({ data: [] }),
-        supabase.from('profiles').select('*').in('id', knownUserIds),
-      ]);
-      const gmRows   = gmResult.data   || [];
-      const taskRows = taskResult.data || [];
-
-      // Top-up: fetch profiles for any group members not already in knownUserIds
-      const extraIds = [...new Set(gmRows.map(gm => gm.user_id))].filter(id => !knownUserIds.includes(id));
-      const extraRows = extraIds.length
-        ? (await supabase.from('profiles').select('*').in('id', extraIds)).data || []
-        : [];
-      const userRows = [...(userResult.data || []), ...extraRows];
-
-      // Normalise invite codes: { schoolId: { teacher: code, staff: code, manager: code } }
-      const inviteCodes = {};
-      inviteRows.forEach(r => {
-        if (!inviteCodes[r.school_id]) inviteCodes[r.school_id] = {};
-        inviteCodes[r.school_id][r.role_key] = r.code;
-      });
+      const { data } = await api.get('/app/bootstrap');
+      const { user, schools, memberships, groups, groupMembers, tasks, users, inviteCodes, notifications } = data;
 
       setState(prev => ({
         ...prev,
-        currentUser:  profile,
-        schools:      schoolRows.map(fmtSchool),
-        users:        userRows.map(fmtProfile),
-        memberships:  membershipRows.map(fmtMembership),
-        groups:       groupRows.map(fmtGroup),
-        groupMembers: gmRows.map(fmtGroupMember),
-        tasks:        taskRows.map(fmtTask),
+        currentUser:  user,
+        schools,
+        memberships,
+        groups,
+        groupMembers,
+        tasks,
+        users,
         inviteCodes,
-        loading:      false,
+        notifications: notifications || [],
       }));
 
-      // Subscribe to task changes for real-time notification badge
-      subscribeToTasks(groupIds);
+      // Subscribe to real-time updates
+      const groupIds = groups.map(g => g.id);
+      const sIds = schools.map(s => s.id);
+      subscribeToRealtime(groupIds, sIds);
 
     } catch (err) {
       console.error('loadUserData error:', err?.message || err);
       setState(prev => ({
         ...prev,
-        loading: false,
-        currentUser: prev.currentUser || { id: authUser.id, email: authUser.email, name: '' },
         loadError: err?.message || 'Failed to load data',
       }));
     } finally {
+      setState(prev => ({ ...prev, loading: false }));
       if (fallbackTimeout) clearTimeout(fallbackTimeout);
     }
   }
 
-  // ── Supabase Realtime — tasks ─────────────────────────────
+  // ── Socket.IO — real-time sync ──────────────────────────
 
-  function subscribeToTasks(groupIds) {
-    if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
-    if (!groupIds.length) return;
+  function subscribeToRealtime(groupIds, schoolIds = []) {
+    const socket = getSocket();
+    if (!socket) return;
 
-    const ch = supabase
-      .channel('task-sync')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, ({ new: row }) => {
-        if (groupIds.includes(row.group_id)) {
-          setState(prev => ({ ...prev, tasks: [...prev.tasks, fmtTask(row)] }));
-        }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, ({ new: row }) => {
-        setState(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === row.id ? fmtTask(row) : t) }));
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, ({ old: row }) => {
-        setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== row.id) }));
-      })
-      .subscribe();
+    if (groupIds.length) socket.emit('join:tasks', groupIds);
+    if (schoolIds.length) {
+      schoolIds.forEach(sid => socket.emit('join:school', sid));
+    }
 
-    taskSubRef.current = ch;
+    // Only attach listeners once per session to avoid duplicates
+    if (taskListenersAttached.current) return;
+    taskListenersAttached.current = true;
+
+    socket.on('task:created', (task) => {
+      setState(prev => ({
+        ...prev,
+        tasks: prev.tasks.some(t => t.id === task.id) ? prev.tasks : [...prev.tasks, task],
+      }));
+    });
+
+    socket.on('task:updated', (task) => {
+      setState(prev => ({
+        ...prev,
+        tasks: prev.tasks.map(t => t.id === task.id ? task : t),
+      }));
+    });
+
+    socket.on('task:deleted', ({ id }) => {
+      setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
+    });
+
+    socket.on('notification:created', (notif) => {
+      setState(prev => ({
+        ...prev,
+        notifications: prev.notifications.some(n => n.id === notif.id) ? prev.notifications : [notif, ...prev.notifications],
+      }));
+    });
+
+    socket.on('membership:created', (m) => {
+      setState(prev => ({
+        ...prev,
+        memberships: prev.memberships.some(em => em.userId === m.userId && em.schoolId === m.schoolId) 
+          ? prev.memberships 
+          : [...prev.memberships, m],
+      }));
+    });
+
+    socket.on('user:joined', (u) => {
+      setState(prev => ({
+        ...prev,
+        users: prev.users.some(eu => eu.id === u.id) ? prev.users : [...prev.users, u],
+      }));
+    });
   }
 
-  // ── Auth state listener ───────────────────────────────────
+  // ── Auth init — check stored JWT, refresh if expired ────
 
   useEffect(() => {
-    // Timeout guard: if getSession never resolves, stop the spinner after 8s
-    const timeoutId = setTimeout(() => {
-      setState(prev => { if (prev.loading) return { ...prev, loading: false }; return prev; });
-    }, 8000);
+    function isTokenExpired(token) {
+      if (!token) return true;
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.exp * 1000 < Date.now() + 10000; // Expired or expiring in < 10s
+      } catch {
+        return true;
+      }
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      clearTimeout(timeoutId);
-      if (session?.user) {
-        loadUserData(session.user);
-      } else {
+    async function initAuth() {
+      const storedToken = localStorage.getItem('tm_access_token');
+      
+      if (!storedToken) {
+        setState(prev => ({ ...prev, loading: false }));
+        return;
+      }
+
+      let activeToken = storedToken;
+
+      // Only refresh if the current token is actually expired
+      if (isTokenExpired(storedToken)) {
+        try {
+          const { data } = await api.post('/auth/refresh');
+          activeToken = data.accessToken;
+          localStorage.setItem('tm_access_token', activeToken);
+        } catch (err) {
+          console.warn('Silent refresh failed:', err?.message);
+          // If refresh fails, we still try to use the stored token once
+          // because the interceptor might handle it or it might just work
+        }
+      }
+
+      connectSocket(activeToken);
+      
+      try {
+        await loadUserData().catch(console.error);
+      } finally {
         setState(prev => ({ ...prev, loading: false }));
       }
-    }).catch(() => {
-      clearTimeout(timeoutId);
-      setState(prev => ({ ...prev, loading: false }));
-    });
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        // Defer via setTimeout so the Supabase auth client finishes its internal lock
-        // before we make any DB calls (avoids silent query failures after verifyOtp)
-        setTimeout(() => loadUserData(session.user).catch(console.error), 0);
-      }
-      if (event === 'SIGNED_OUT') {
-        if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
-        setState({ ...INITIAL, loading: false, theme: localStorage.getItem('tm_theme') || 'light' });
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-      if (taskSubRef.current) supabase.removeChannel(taskSubRef.current);
-    };
+    initAuth();
   }, []);
 
   // ── Theme ────────────────────────────────────────────────
@@ -249,8 +191,21 @@ export function AppProvider({ children }) {
 
   // ── Auth ─────────────────────────────────────────────────
 
+  async function login(accessToken) {
+    localStorage.setItem('tm_access_token', accessToken);
+    connectSocket(accessToken);
+    await loadUserData();
+  }
+
   async function logout() {
-    await supabase.auth.signOut();
+    // Clear local state immediately for instant feedback
+    localStorage.removeItem('tm_access_token');
+    taskListenersAttached.current = false;
+    disconnectSocket();
+    setState({ ...INITIAL, loading: false, theme: localStorage.getItem('tm_theme') || 'light' });
+
+    // Notify server in background
+    api.post('/auth/logout').catch(() => {});
   }
 
   // ── User profile ─────────────────────────────────────────
@@ -258,7 +213,7 @@ export function AppProvider({ children }) {
   async function updateUserName(name) {
     if (!state.currentUser) return;
     const trimmed = name.trim();
-    await supabase.from('profiles').update({ name: trimmed }).eq('id', state.currentUser.id);
+    await api.patch('/users/me', { name: trimmed });
     const updated = { ...state.currentUser, name: trimmed };
     setState(prev => ({
       ...prev,
@@ -272,43 +227,26 @@ export function AppProvider({ children }) {
   async function registerSchool(name, address, type) {
     if (!state.currentUser) return null;
 
-    // Generate school ID client-side so we can insert membership immediately
-    // without needing to SELECT the school back (avoids RLS chicken-and-egg)
-    const schoolId = crypto.randomUUID();
-    const school = { id: schoolId, name: name.trim(), address: address.trim(), type };
+    const { data } = await api.post('/schools', {
+      name: name.trim(),
+      address: address.trim(),
+      type,
+    });
 
-    const { error: sErr } = await supabase.from('schools').insert(school);
-    if (sErr) throw sErr;
-
-    const codes = [
-      { school_id: schoolId, role_key: 'teacher', code: genCode('T') },
-      { school_id: schoolId, role_key: 'staff',   code: genCode('S') },
-      { school_id: schoolId, role_key: 'manager', code: genCode('M') },
-    ];
-
-    // membership + invite_codes are independent — run in parallel
-    const [{ error: mErr }, { error: cErr }] = await Promise.all([
-      supabase.from('memberships').insert({ user_id: state.currentUser.id, school_id: schoolId, role: 'Owner' }),
-      supabase.from('invite_codes').insert(codes),
-    ]);
-    if (mErr) throw mErr;
-    if (cErr) throw cErr;
-
-    const invObj = {};
-    codes.forEach(c => { invObj[c.role_key] = c.code; });
+    const school = { id: data.id, name: data.name, address: data.address, type: data.type };
 
     setState(prev => ({
       ...prev,
       schools:     [...prev.schools, school],
-      memberships: [...prev.memberships, { userId: state.currentUser.id, schoolId, role: 'Owner' }],
-      inviteCodes: { ...prev.inviteCodes, [schoolId]: invObj },
+      memberships: [...prev.memberships, data.membership],
+      inviteCodes: { ...prev.inviteCodes, ...data.inviteCodes },
     }));
 
     return school;
   }
 
   async function updateSchool(schoolId, edits) {
-    await supabase.from('schools').update(edits).eq('id', schoolId);
+    await api.patch(`/schools/${schoolId}`, edits);
     setState(prev => ({
       ...prev,
       schools: prev.schools.map(s => s.id === schoolId ? { ...s, ...edits } : s),
@@ -316,15 +254,12 @@ export function AppProvider({ children }) {
   }
 
   async function regenerateCode(schoolId, roleKey) {
-    const code = genCode(roleKey === 'teacher' ? 'T' : roleKey === 'staff' ? 'S' : 'M');
-    await supabase
-      .from('invite_codes')
-      .upsert({ school_id: schoolId, role_key: roleKey, code }, { onConflict: 'school_id,role_key' });
+    const { data } = await api.post(`/schools/${schoolId}/invite-codes/${roleKey}/regenerate`);
     setState(prev => ({
       ...prev,
       inviteCodes: {
         ...prev.inviteCodes,
-        [schoolId]: { ...(prev.inviteCodes[schoolId] || {}), [roleKey]: code },
+        [schoolId]: { ...(prev.inviteCodes[schoolId] || {}), [roleKey]: data.code },
       },
     }));
   }
@@ -334,67 +269,35 @@ export function AppProvider({ children }) {
   async function joinSchool(code) {
     if (!state.currentUser) return { success: false, error: 'Not logged in' };
 
-    const { data: invRow, error: lookupErr } = await supabase
-      .from('invite_codes')
-      .select('*')
-      .eq('code', code.trim())
-      .maybeSingle();
+    try {
+      const { data } = await api.post('/memberships/join', { code: code.trim() });
 
-    if (lookupErr) return { success: false, error: 'Could not verify invite code. Please try again.' };
-    if (!invRow)   return { success: false, error: 'Invalid invite code. Please check and try again.' };
+      setState(prev => ({
+        ...prev,
+        schools:      data.school ? [...prev.schools, data.school] : prev.schools,
+        groups:       [...prev.groups, ...(data.groups || [])],
+        memberships:  [
+          ...prev.memberships,
+          { userId: state.currentUser.id, schoolId: data.schoolId, role: data.role },
+        ],
+        groupMembers: [...prev.groupMembers, ...(data.groupMemberships || [])],
+      }));
 
-    const alreadyMember = state.memberships.some(
-      m => m.userId === state.currentUser.id && m.schoolId === invRow.school_id
-    );
-    if (alreadyMember) return { success: false, error: 'You are already a member of this school.' };
-
-    const roleMap = { teacher: 'Teacher', staff: 'Staff', manager: 'Manager' };
-    const role = roleMap[invRow.role_key] || 'Staff';
-
-    const { error: mErr } = await supabase
-      .from('memberships')
-      .insert({ user_id: state.currentUser.id, school_id: invRow.school_id, role });
-    if (mErr) return { success: false, error: mErr.message };
-
-    // Fetch school data + its groups in parallel (we're not a member yet so state won't have them)
-    const [{ data: schoolRow }, { data: groupRows }] = await Promise.all([
-      supabase.from('schools').select('*').eq('id', invRow.school_id).single(),
-      supabase.from('groups').select('*').eq('school_id', invRow.school_id),
-    ]);
-    const allGroupIds = (groupRows || []).map(g => g.id);
-
-    // Add user to all groups in the school
-    if (allGroupIds.length) {
-      await supabase.from('group_members').insert(
-        allGroupIds.map(gid => ({ user_id: state.currentUser.id, group_id: gid }))
-      );
+      // Silent refresh to pick up tasks and extra profiles
+      loadUserData(true).catch(console.error);
+      return { success: true, schoolId: data.schoolId };
+    } catch (err) {
+      return {
+        success: false,
+        error: err?.response?.data?.message || 'Failed to join school.',
+      };
     }
-
-    setState(prev => ({
-      ...prev,
-      schools:      schoolRow ? [...prev.schools, fmtSchool(schoolRow)] : prev.schools,
-      groups:       [...prev.groups, ...(groupRows || []).map(fmtGroup)],
-      memberships:  [...prev.memberships, { userId: state.currentUser.id, schoolId: invRow.school_id, role }],
-      groupMembers: [
-        ...prev.groupMembers,
-        ...allGroupIds.map(gid => ({ userId: state.currentUser.id, groupId: gid })),
-      ],
-    }));
-
-    // Silently refresh tasks + member profiles in background — no loading spinner
-    loadUserData({ id: state.currentUser.id, email: state.currentUser.email }, true).catch(console.error);
-    return { success: true, schoolId: invRow.school_id };
   }
 
   async function removeMember(schoolId, userId) {
     if (!state.currentUser || userId === state.currentUser.id) return;
-    await supabase.from('memberships').delete()
-      .eq('user_id', userId).eq('school_id', schoolId);
+    await api.delete(`/memberships/${schoolId}/members/${userId}`);
     const groupIds = state.groups.filter(g => g.schoolId === schoolId).map(g => g.id);
-    if (groupIds.length) {
-      await supabase.from('group_members').delete()
-        .eq('user_id', userId).in('group_id', groupIds);
-    }
     setState(prev => ({
       ...prev,
       memberships:  prev.memberships.filter(m => !(m.userId === userId && m.schoolId === schoolId)),
@@ -404,37 +307,28 @@ export function AppProvider({ children }) {
 
   // ── Groups ────────────────────────────────────────────────
 
-  async function addGroup(schoolId, name, parentId = null) {
-    // Generate ID client-side to avoid post-INSERT SELECT RLS issues
-    const groupId = crypto.randomUUID();
-    const grp = { id: groupId, schoolId, name: name.trim(), parentId: parentId || null };
-
-    const { error } = await supabase.from('groups').insert({
-      id: groupId, school_id: schoolId, name: name.trim(), parent_id: parentId || null,
+  async function addGroup(schoolId, name, parentId = null, userIds = []) {
+    const { data } = await api.post('/groups', {
+      schoolId,
+      name: name.trim(),
+      parentId: parentId || undefined,
+      userIds: userIds.length ? userIds : undefined,
     });
-    if (error) throw error;
-
-    // Add all school members to the new group
-    const schoolMembers = state.memberships.filter(m => m.schoolId === schoolId);
-    if (schoolMembers.length) {
-      await supabase.from('group_members').insert(
-        schoolMembers.map(m => ({ user_id: m.userId, group_id: groupId }))
-      );
-    }
 
     setState(prev => ({
       ...prev,
-      groups: [...prev.groups, grp],
-      groupMembers: [
-        ...prev.groupMembers,
-        ...schoolMembers.map(m => ({ userId: m.userId, groupId })),
+      groups: [
+        ...prev.groups,
+        { id: data.id, schoolId: data.schoolId, name: data.name, parentId: data.parentId },
       ],
+      groupMembers: [...prev.groupMembers, ...(data.groupMembers || [])],
     }));
-    return grp;
+
+    return data;
   }
 
   async function renameGroup(groupId, newName) {
-    await supabase.from('groups').update({ name: newName.trim() }).eq('id', groupId);
+    await api.patch(`/groups/${groupId}`, { name: newName.trim() });
     setState(prev => ({
       ...prev,
       groups: prev.groups.map(g => g.id === groupId ? { ...g, name: newName.trim() } : g),
@@ -442,14 +336,9 @@ export function AppProvider({ children }) {
   }
 
   async function deleteGroup(groupId) {
-    // Collect this group and all descendants
-    function descendants(id) {
-      const children = state.groups.filter(g => g.parentId === id).map(g => g.id);
-      return children.flatMap(cid => [cid, ...descendants(cid)]);
-    }
-    const toDelete = [groupId, ...descendants(groupId)];
+    const { data } = await api.delete(`/groups/${groupId}`);
+    const toDelete = data.deletedGroupIds || [groupId];
 
-    await supabase.from('groups').delete().in('id', toDelete);
     setState(prev => ({
       ...prev,
       groups:       prev.groups.filter(g => !toDelete.includes(g.id)),
@@ -462,54 +351,52 @@ export function AppProvider({ children }) {
 
   async function addTask(groupId, taskData) {
     if (!state.currentUser) return;
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert({
-        group_id:    groupId,
-        title:       taskData.title,
-        assigned_to: taskData.assignedTo || null,
-        due_date:    taskData.dueDate || null,
-        priority:    taskData.priority || 'medium',
-        status:      'pending',
-        created_by:  state.currentUser.id,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    // Real-time subscription will update state; also update locally for instant feedback
-    setState(prev => ({
-      ...prev,
-      tasks: [...prev.tasks.filter(t => t.id !== data.id), fmtTask(data)],
-    }));
+    
+    // If assignedTo is an array, create multiple tasks
+    const assignees = Array.isArray(taskData.assignedTo) ? taskData.assignedTo : [taskData.assignedTo];
+    
+    const results = [];
+    for (const uid of assignees) {
+      const { data } = await api.post('/tasks', {
+        groupId,
+        title:      taskData.title,
+        assignedTo: uid || undefined,
+        dueDate:    taskData.dueDate || undefined,
+        priority:   taskData.priority || 'medium',
+      });
+      results.push(data);
+    }
+
+    // Real-time socket will also update state; this ensures instant local feedback
+    setState(prev => {
+      let nextTasks = [...prev.tasks];
+      results.forEach(data => {
+        if (!nextTasks.some(t => t.id === data.id)) {
+          nextTasks.push(data);
+        }
+      });
+      return { ...prev, tasks: nextTasks };
+    });
   }
 
   async function toggleTask(taskId) {
-    const task = state.tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-    await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+    const { data } = await api.patch(`/tasks/${taskId}/toggle`);
     setState(prev => ({
       ...prev,
-      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t),
+      tasks: prev.tasks.map(t => t.id === taskId ? data : t),
     }));
   }
 
   async function editTask(taskId, updates) {
-    const dbUpdates = {};
-    if (updates.title)      dbUpdates.title       = updates.title;
-    if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo || null;
-    if (updates.dueDate !== undefined)    dbUpdates.due_date    = updates.dueDate || null;
-    if (updates.priority)   dbUpdates.priority    = updates.priority;
-
-    await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
+    const { data } = await api.patch(`/tasks/${taskId}`, updates);
     setState(prev => ({
       ...prev,
-      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t),
+      tasks: prev.tasks.map(t => t.id === taskId ? data : t),
     }));
   }
 
   async function deleteTask(taskId) {
-    await supabase.from('tasks').delete().eq('id', taskId);
+    await api.delete(`/tasks/${taskId}`);
     setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
   }
 
@@ -562,13 +449,40 @@ export function AppProvider({ children }) {
 
   function getMyNotifications() {
     if (!state.currentUser) return [];
+    
+    // Combine overdue tasks and actual notification records
     const today = new Date(new Date().toDateString());
-    return state.tasks.filter(t =>
-      t.assignedTo === state.currentUser.id &&
-      t.status === 'pending' &&
-      t.dueDate &&
-      new Date(t.dueDate) < today
-    );
+    const taskNotifs = state.tasks
+      .filter(t =>
+        t.assignedTo === state.currentUser.id &&
+        t.status === 'pending' &&
+        t.dueDate &&
+        new Date(t.dueDate) < today
+      )
+      .map(t => ({
+        id: `task-${t.id}`,
+        title: 'Task Overdue',
+        message: t.title,
+        type: 'warning',
+        createdAt: t.dueDate,
+        isTask: true,
+      }));
+
+    const dbNotifs = state.notifications.map(n => ({
+      ...n,
+      isTask: false,
+    }));
+
+    return [...taskNotifs, ...dbNotifs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  async function markNotificationAsRead(id) {
+    if (id.startsWith('task-')) return; // Can't mark derived task notifs as read here
+    await api.patch(`/memberships/notifications/${id}/read`);
+    setState(prev => ({
+      ...prev,
+      notifications: prev.notifications.filter(n => n.id !== id), // Remove from list if read
+    }));
   }
 
   // ── Permissions ───────────────────────────────────────────
@@ -589,7 +503,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       ...state,
       // auth
-      logout,
+      login, logout,
       // theme
       toggleTheme,
       // user
@@ -606,10 +520,10 @@ export function AppProvider({ children }) {
       getRoleInSchool, getCurrentUserSchools,
       getGroupsForUser, getGroupMembers, getSchoolMembers,
       getGroupTasks, getUserById, getMyNotifications,
+      // notifications
+      markNotificationAsRead,
       // permissions
       canCreateTasks, canCreateGroups, canManageMembers,
-      // supabase client (for ChatTab real-time and image upload)
-      supabase,
     }}>
       {children}
     </AppContext.Provider>

@@ -25,11 +25,11 @@ function Section({ title, items, onEdit, canManage }) {
 const EMPTY_FORM = { title: '', assignedTo: '', dueDate: '', priority: 'medium' };
 
 export default function TasksTab({ groupId, schoolId }) {
-  const { getGroupTasks, getGroupMembers, addTask, editTask, canCreateTasks } = useApp();
+  const { getGroupTasks, getGroupMembers, addTask, editTask, canCreateTasks, getSchoolMembers } = useApp();
   const [filter, setFilter] = useState('pending');
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState({ ...EMPTY_FORM, assignedTo: [] });
   const [error, setError] = useState('');
 
   const tasks = getGroupTasks(groupId);
@@ -51,12 +51,29 @@ export default function TasksTab({ groupId, schoolId }) {
     setEditingTask(task);
     setForm({
       title:      task.title,
-      assignedTo: task.assignedTo,
+      assignedTo: task.assignedTo || [],
       dueDate:    task.dueDate,
       priority:   task.priority,
     });
     setError('');
     setShowModal(true);
+  }
+
+  function toggleAssignee(id) {
+    setForm(f => {
+      const current = Array.isArray(f.assignedTo) ? f.assignedTo : (f.assignedTo ? [f.assignedTo] : []);
+      const next = current.includes(id) ? current.filter(uid => uid !== id) : [...current, id];
+      return { ...f, assignedTo: next };
+    });
+  }
+
+  function selectAllTeachers() {
+    const schoolMembers = getSchoolMembers(schoolId);
+    const teacherIds = schoolMembers.filter(m => m.role === 'Teacher').map(m => m.user.id);
+    // Intersection of group members and teachers
+    const groupMemberIds = members.map(m => m.id);
+    const targetIds = teacherIds.filter(id => groupMemberIds.includes(id));
+    setForm(f => ({ ...f, assignedTo: [...new Set([...(Array.isArray(f.assignedTo) ? f.assignedTo : []), ...targetIds])] }));
   }
 
   function closeModal() {
@@ -68,7 +85,10 @@ export default function TasksTab({ groupId, schoolId }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim()) { setError('Task title is required.'); return; }
-    if (!form.assignedTo)   { setError('Please assign this task to a member.'); return; }
+    if (!form.assignedTo || (Array.isArray(form.assignedTo) && form.assignedTo.length === 0)) {
+      setError('Please assign this task to at least one member.');
+      return;
+    }
     if (!form.dueDate)      { setError('Please set a due date.'); return; }
 
     if (editingTask) {
@@ -149,17 +169,24 @@ export default function TasksTab({ groupId, schoolId }) {
             </div>
             <div className="task-form-field">
               <label>Assign To *</label>
-              <select
-                value={form.assignedTo}
-                onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}
-              >
-                <option value="">Select a member</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.email}
-                  </option>
-                ))}
-              </select>
+              <div className="sidebar-member-selection">
+                <div className="sms-shortcuts">
+                  <button type="button" onClick={selectAllTeachers}>Select All Teachers</button>
+                  <button type="button" onClick={() => setForm(f => ({ ...f, assignedTo: [] }))}>Clear All</button>
+                </div>
+                <div className="sms-list" style={{ maxHeight: '140px' }}>
+                  {members.map(m => (
+                    <label key={m.id} className="sms-item">
+                      <input
+                        type="checkbox"
+                        checked={Array.isArray(form.assignedTo) ? form.assignedTo.includes(m.id) : form.assignedTo === m.id}
+                        onChange={() => toggleAssignee(m.id)}
+                      />
+                      <span className="sms-name">{m.name || m.email}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="task-form-row">
               <div className="task-form-field">

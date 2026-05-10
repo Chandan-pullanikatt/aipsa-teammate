@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import './ProfilePage.css';
 
@@ -10,10 +10,10 @@ const ROLE_LABELS = {
 };
 
 const ROLE_BADGE_COLOR = {
-  Owner:   '#1a5c3a',
-  Teacher: '#2563eb',
-  Manager: '#7c3aed',
-  Staff:   '#b45309',
+  Owner:   'var(--role-owner)',
+  Teacher: 'var(--role-teacher)',
+  Manager: 'var(--role-manager)',
+  Staff:   'var(--role-staff)',
 };
 
 function getInitials(nameOrEmail) {
@@ -24,7 +24,7 @@ function getInitials(nameOrEmail) {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const {
-    currentUser, getCurrentUserSchools, getSchoolMembers,
+    currentUser, loading, getCurrentUserSchools, getSchoolMembers,
     inviteCodes, regenerateCode, updateSchool, updateUserName,
     removeMember, logout,
   } = useApp();
@@ -43,8 +43,15 @@ export default function ProfilePage() {
   // Member removal
   const [removingMemberId, setRemovingMemberId] = useState(null);
 
+  if (loading) return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)', fontFamily: 'Outfit, sans-serif', color: 'var(--text-muted)', fontSize: '0.95rem', gap: '1rem' }}>
+      <div className="otp-spinner" style={{ width: '2rem', height: '2rem', borderWidth: '3px', borderColor: 'var(--primary) transparent var(--primary) transparent' }} />
+      Setting up your workspace…
+    </div>
+  );
+
   if (!currentUser) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading…</div>;
+    return <Navigate to="/login" replace />;
   }
 
   const userSchools = getCurrentUserSchools();

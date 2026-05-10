@@ -508,3 +508,100 @@
   .msg-poll, .msg-todo { min-width: unset; width: 100%; }
   .chat-input-bar { padding: 0.625rem 0.75rem; }
 }
+
+/* ── Skeleton Loader ── */
+@keyframes skel-shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+.chat-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.chat-skel-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.chat-skel-row.own {
+  flex-direction: row-reverse;
+}
+
+.chat-skel-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--surface-3) 25%, var(--surface-hover) 50%, var(--surface-3) 75%);
+  background-size: 400px 100%;
+  animation: skel-shimmer 1.4s ease infinite;
+  flex-shrink: 0;
+}
+
+.chat-skel-row.own .chat-skel-avatar {
+  display: none;
+}
+
+.chat-skel-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  min-width: 140px;
+  max-width: 280px;
+}
+
+.chat-skel-row.own .chat-skel-bubble {
+  border-radius: 14px 14px 4px 14px;
+  background: var(--primary-tint);
+  border-color: var(--primary-tint-bd);
+}
+
+.chat-skel-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-3) 25%, var(--surface-hover) 50%, var(--surface-3) 75%);
+  background-size: 400px 100%;
+  animation: skel-shimmer 1.4s ease infinite;
+}
+
+.chat-skel-line.short {
+  height: 10px;
+}
+
+/* ── Load More ── */
+.chat-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0 0.75rem;
+}
+
+.chat-load-more button {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  padding: 0.4rem 1.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chat-load-more button:hover:not(:disabled) {
+  background: var(--primary-tint);
+  border-color: var(--primary);
+}
+
+.chat-load-more button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

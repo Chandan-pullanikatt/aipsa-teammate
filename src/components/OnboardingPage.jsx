@@ -5,7 +5,7 @@ import './OnboardingPage.css';
 
 export default function OnboardingPage() {
   const navigate  = useNavigate();
-  const { registerSchool, joinSchool, currentUser } = useApp();
+  const { registerSchool, joinSchool, currentUser, loading } = useApp();
 
   const [regForm,    setRegForm]    = useState({ name: '', address: '', type: 'Secondary' });
   const [regLoading, setRegLoading] = useState(false);
@@ -14,6 +14,13 @@ export default function OnboardingPage() {
   const [joinCode,    setJoinCode]    = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError,   setJoinError]   = useState('');
+
+  if (loading) return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)', fontFamily: 'Outfit, sans-serif', color: 'var(--text-muted)', fontSize: '0.95rem', gap: '1rem' }}>
+      <div className="otp-spinner" style={{ width: '2rem', height: '2rem', borderWidth: '3px', borderColor: 'var(--primary) transparent var(--primary) transparent' }} />
+      Setting up your workspace…
+    </div>
+  );
 
   if (!currentUser) { navigate('/login'); return null; }
 

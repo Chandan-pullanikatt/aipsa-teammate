@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import api from '../lib/api';
+import { getSocket } from '../lib/socket';
 import './ChatTab.css';
 
 // ── Slash commands ────────────────────────────────────────────
@@ -25,20 +27,6 @@ function formatTime(ts) {
 
 function getInitials(name) {
   return (name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-}
-
-// Convert DB row → app message shape (metadata is spread flat)
-function fmtMsg(row) {
-  return {
-    id:         row.id,
-    groupId:    row.group_id,
-    senderId:   row.sender_id,
-    senderName: row.sender_name,
-    content:    row.content,
-    type:       row.type,
-    timestamp:  row.created_at,
-    ...(row.metadata || {}),
-  };
 }
 
 // ── Rich bubble renderers ─────────────────────────────────────
@@ -130,20 +118,27 @@ function TodoBubble({ msg, onToggle }) {
 }
 
 // ── Main ChatTab ──────────────────────────────────────────────
+// In-memory message cache to avoid re-fetching on tab switches
+const messageCache = {};
+
 export default function ChatTab({ groupId, schoolId }) {
-  const { currentUser, addTask, canCreateTasks, getGroupMembers, getUserById, supabase } = useApp();
+  const { currentUser, addTask, canCreateTasks, getGroupMembers, getUserById } = useApp();
   const members = getGroupMembers(groupId);
   const canAdd  = canCreateTasks(schoolId);
 
-  // ── Message state (owned by ChatTab, backed by Supabase) ──
-  const [messages, setMessages]   = useState([]);
-  const [msgsLoading, setMsgsLoading] = useState(true);
+  // ── Message state ──
+  const [messages, setMessages]       = useState(() => messageCache[groupId]?.messages || []);
+  const [msgsLoading, setMsgsLoading] = useState(!messageCache[groupId]);
+  const [hasMore, setHasMore]         = useState(false);
+  const [cursor, setCursor]           = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // ── Input state ──
-  const [text, setText]             = useState('');
-  const textRef   = useRef(null);
-  const bottomRef = useRef(null);
+  const [text, setText]               = useState('');
+  const textRef     = useRef(null);
+  const bottomRef   = useRef(null);
   const imageInputRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   // ── Slash menu ──
   const [slashVisible, setSlashVisible] = useState(false);
@@ -170,51 +165,111 @@ export default function ChatTab({ groupId, schoolId }) {
   const [todoItems, setTodoItems] = useState(['', '']);
 
   // ── Image ──
-  const [imgPreview, setImgPreview] = useState(null);
-  const [imgCaption, setImgCaption] = useState('');
+  const [imgPreview,   setImgPreview]   = useState(null);
+  const [imgCaption,   setImgCaption]   = useState('');
   const [imgUploading, setImgUploading] = useState(false);
-  const [imgError,   setImgError]   = useState('');
-  const pendingUploadRef = useRef(null); // stores Supabase storage path while previewing
+  const [imgError,     setImgError]     = useState('');
+  const pendingPublicIdRef = useRef(null); // Cloudinary public_id for cleanup on cancel
 
-  // ── Load messages + subscribe to realtime ────────────────
+  // ── Load messages + subscribe to real-time ────────────────
 
   const loadMessages = useCallback(async () => {
-    setMsgsLoading(true);
-    const { data = [] } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('group_id', groupId)
-      .order('created_at', { ascending: true });
-    setMessages(data.map(fmtMsg));
-    setMsgsLoading(false);
+    // Use cache instantly, then refresh in background
+    if (messageCache[groupId]) {
+      setMessages(messageCache[groupId].messages);
+      setHasMore(messageCache[groupId].hasMore);
+      setCursor(messageCache[groupId].cursor);
+      setMsgsLoading(false);
+    } else {
+      setMsgsLoading(true);
+    }
+
+    try {
+      const { data } = await api.get(`/messages?groupId=${groupId}&limit=50`);
+      const msgs = data.messages || [];
+      setMessages(msgs);
+      setHasMore(data.hasMore || false);
+      setCursor(data.cursor || null);
+      // Update cache
+      messageCache[groupId] = { messages: msgs, hasMore: data.hasMore, cursor: data.cursor };
+    } catch (err) {
+      console.error('Failed to load messages:', err?.message);
+    } finally {
+      setMsgsLoading(false);
+    }
   }, [groupId]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { data } = await api.get(`/messages?groupId=${groupId}&limit=50&before=${cursor}`);
+      const older = data.messages || [];
+      setMessages(prev => {
+        const merged = [...older, ...prev];
+        // Deduplicate by id
+        const seen = new Set();
+        const unique = merged.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+        messageCache[groupId] = { messages: unique, hasMore: data.hasMore, cursor: data.cursor };
+        return unique;
+      });
+      setHasMore(data.hasMore || false);
+      setCursor(data.cursor || null);
+    } catch (err) {
+      console.error('Failed to load older messages:', err?.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [groupId, cursor, loadingMore]);
 
   useEffect(() => {
     loadMessages();
 
-    const ch = supabase
-      .channel(`chat-${groupId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
-        ({ new: row }) => setMessages(prev => {
-          if (prev.some(m => m.id === row.id)) return prev;
-          return [...prev, fmtMsg(row)];
-        })
-      )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
-        ({ new: row }) => setMessages(prev => prev.map(m => m.id === row.id ? fmtMsg(row) : m))
-      )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
-        ({ old: row }) => setMessages(prev => prev.filter(m => m.id !== row.id))
-      )
-      .subscribe();
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('join:chat', groupId);
 
-    return () => supabase.removeChannel(ch);
+      const onCreated = (msg) => {
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          const next = [...prev, msg];
+          messageCache[groupId] = { ...messageCache[groupId], messages: next };
+          return next;
+        });
+      };
+      const onUpdated = (msg) => {
+        setMessages(prev => {
+          const next = prev.map(m => m.id === msg.id ? msg : m);
+          messageCache[groupId] = { ...messageCache[groupId], messages: next };
+          return next;
+        });
+      };
+      const onDeleted = ({ id }) => {
+        setMessages(prev => {
+          const next = prev.filter(m => m.id !== id);
+          messageCache[groupId] = { ...messageCache[groupId], messages: next };
+          return next;
+        });
+      };
+
+      socket.on('message:created', onCreated);
+      socket.on('message:updated', onUpdated);
+      socket.on('message:deleted', onDeleted);
+
+      return () => {
+        socket.emit('leave:chat', groupId);
+        socket.off('message:created', onCreated);
+        socket.off('message:updated', onUpdated);
+        socket.off('message:deleted', onDeleted);
+      };
+    }
   }, [groupId, loadMessages]);
 
   // ── Auto-scroll ──
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
 
   // ── Close slash menu on outside click ──
   useEffect(() => {
@@ -225,20 +280,13 @@ export default function ChatTab({ groupId, schoolId }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ── Send a message to Supabase ────────────────────────────
+  // ── Send a message ────────────────────────────────────────
 
   async function sendMessage(content, extra = {}) {
     if (!currentUser) return;
     const { type = 'text', ...metadata } = extra;
-    await supabase.from('messages').insert({
-      group_id:    groupId,
-      sender_id:   currentUser.id,
-      sender_name: currentUser.name || currentUser.email,
-      content,
-      type,
-      metadata,
-    });
-    // Real-time subscription will add it to the list
+    await api.post('/messages', { groupId, content, type, metadata });
+    // Real-time socket will add it to the list
   }
 
   // ── Poll vote ─────────────────────────────────────────────
@@ -246,17 +294,17 @@ export default function ChatTab({ groupId, schoolId }) {
   async function handleVoteOnPoll(msgId, optionId) {
     const msg = messages.find(m => m.id === msgId);
     if (!msg || !currentUser) return;
+
+    // Optimistic update
     const uid = currentUser.id;
     const newOptions = msg.pollOptions.map(opt => {
       const votes = opt.votes.filter(v => v !== uid);
       if (opt.id === optionId) votes.push(uid);
       return { ...opt, votes };
     });
-    // Optimistic update
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pollOptions: newOptions } : m));
-    await supabase.from('messages')
-      .update({ metadata: { pollOptions: newOptions } })
-      .eq('id', msgId);
+
+    await api.patch(`/messages/${msgId}/vote`, { optionId });
   }
 
   // ── Todo toggle ───────────────────────────────────────────
@@ -264,11 +312,12 @@ export default function ChatTab({ groupId, schoolId }) {
   async function handleToggleTodoItem(msgId, itemId) {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
+
+    // Optimistic update
     const newItems = msg.todoItems.map(it => it.id === itemId ? { ...it, done: !it.done } : it);
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, todoItems: newItems } : m));
-    await supabase.from('messages')
-      .update({ metadata: { todoItems: newItems } })
-      .eq('id', msgId);
+
+    await api.patch(`/messages/${msgId}/toggle-todo`, { itemId });
   }
 
   // ── Input handler ─────────────────────────────────────────
@@ -321,10 +370,11 @@ export default function ChatTab({ groupId, schoolId }) {
     setPollQ(''); setPollOpts(['', '']);
     setTodoTitle(''); setTodoItems(['', '']);
     setImgPreview(null); setImgCaption(''); setImgError('');
-    if (pendingUploadRef.current) {
-      // Clean up orphaned upload
-      supabase.storage.from('chat-images').remove([pendingUploadRef.current]);
-      pendingUploadRef.current = null;
+    if (pendingPublicIdRef.current) {
+      // Clean up orphaned Cloudinary upload
+      api.delete(`/upload/chat-image/${encodeURIComponent(pendingPublicIdRef.current)}`)
+        .catch(() => {});
+      pendingPublicIdRef.current = null;
     }
     textRef.current?.focus();
   }
@@ -364,33 +414,29 @@ export default function ChatTab({ groupId, schoolId }) {
     setImgError('');
     setImgUploading(true);
 
-    const ext  = file.name.split('.').pop().toLowerCase();
-    const path = `${currentUser.id}/${Date.now()}.${ext}`;
-    const { data: uploadData, error: uploadErr } = await supabase.storage
-      .from('chat-images')
-      .upload(path, file, { contentType: file.type, upsert: false });
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
 
-    setImgUploading(false);
-    e.target.value = '';
+      const { data } = await api.post('/upload/chat-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
 
-    if (uploadErr) {
+      pendingPublicIdRef.current = data.publicId;
+      setImgPreview(data.url);
+      setCmd('image-preview');
+    } catch {
       setImgError('Upload failed. Please try again.');
-      return;
+    } finally {
+      setImgUploading(false);
+      e.target.value = '';
     }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('chat-images')
-      .getPublicUrl(uploadData.path);
-
-    pendingUploadRef.current = uploadData.path;
-    setImgPreview(publicUrl);
-    setCmd('image-preview');
   }
 
   async function submitImage() {
     if (!imgPreview) return;
     await sendMessage(imgCaption.trim(), { type: 'image', imageUrl: imgPreview });
-    pendingUploadRef.current = null;
+    pendingPublicIdRef.current = null;
     cancelCmd();
   }
 
@@ -424,6 +470,12 @@ export default function ChatTab({ groupId, schoolId }) {
   }
 
   // ── Render message ────────────────────────────────────────
+
+  function renderMentions(content) {
+    return content.split(/(@\w[\w\s]*)/g).map((part, i) =>
+      part.startsWith('@') ? <span key={i} className="mention-chip">{part}</span> : part
+    );
+  }
 
   function renderMessage(msg) {
     const isOwn = msg.senderId === currentUser?.id;
@@ -470,20 +522,33 @@ export default function ChatTab({ groupId, schoolId }) {
     );
   }
 
-  function renderMentions(content) {
-    return content.split(/(@\w[\w\s]*)/g).map((part, i) =>
-      part.startsWith('@') ? <span key={i} className="mention-chip">{part}</span> : part
-    );
-  }
-
   // ── Render ────────────────────────────────────────────────
 
   return (
     <div className="chat-tab">
       <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{ display: 'none' }} onChange={handleImageFile} />
 
-      <div className="chat-messages">
-        {msgsLoading && <div className="chat-empty">Loading messages…</div>}
+      <div className="chat-messages" ref={scrollContainerRef}>
+        {msgsLoading && (
+          <div className="chat-skeleton">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className={`chat-skel-row${i % 3 === 0 ? ' own' : ''}`}>
+                <div className="chat-skel-avatar" />
+                <div className="chat-skel-bubble">
+                  <div className="chat-skel-line" style={{ width: `${50 + Math.random() * 40}%` }} />
+                  <div className="chat-skel-line short" style={{ width: `${30 + Math.random() * 25}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!msgsLoading && hasMore && (
+          <div className="chat-load-more">
+            <button onClick={loadOlderMessages} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : '↑ Load older messages'}
+            </button>
+          </div>
+        )}
         {!msgsLoading && messages.length === 0 && (
           <div className="chat-empty">No messages yet. Type <code>/</code> to see what you can share.</div>
         )}

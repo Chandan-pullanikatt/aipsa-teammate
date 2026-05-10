@@ -3,7 +3,24 @@
     "allow": [
       "Bash(npm install *)",
       "Bash(echo \".env\")",
-      "Bash(echo \".env.local\")"
+      "Bash(echo \".env.local\")",
+      "Read(//c/Users/chand/.gemini/antigravity/scratch/**)",
+      "Bash(npm list *)",
+      "Bash(nest --version)",
+      "Bash(nest new *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const p = require\\('@prisma/client'\\); console.log\\(Object.keys\\(p\\).slice\\(0,20\\)\\)\")",
+      "Bash(node -e \"const {PrismaClient} = require\\('@prisma/client'\\); const p = new PrismaClient\\(\\); console.log\\(typeof p.profile\\)\")",
+      "Bash(node -e \"const {PrismaClient} = require\\('@prisma/client'\\); console.log\\(typeof PrismaClient\\)\")",
+      "Bash(head -30 node_modules/@prisma/client/default.d.ts)",
+      "Bash(head -30 node_modules/@prisma/client/index.d.ts)",
+      "Bash(npm uninstall *)",
+      "Bash(npx vite *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\chand\\.gemini\\antigravity\\scratch\\aipsa-backend\\prisma",
+      "c:\\Users\\chand\\.gemini\\antigravity\\scratch\\aipsa-backend"
     ]
   }
 }

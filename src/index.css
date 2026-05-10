@@ -44,12 +44,23 @@
   --radius:             8px;
   --radius-lg:          10px;
   --transition:         all 0.2s ease;
+
+  /* Role Colors */
+  --role-owner:         #1a5c3a;
+  --role-teacher:       #2563eb;
+  --role-manager:       #7c3aed;
+  --role-staff:         #b45309;
 }
 
 /* ── Dark theme overrides ───────────────────────────────────────────────────── */
 [data-theme='dark'] {
   color-scheme: dark;
 
+  /* Brighter primary palette for dark mode */
+  --primary:            #2ecc86;
+  --primary-dark:       #27ae72;
+  --primary-light:      #4adea0;
+  
   --primary-tint:       #0e1c14;
   --primary-tint-bd:    #1a3226;
 
@@ -59,9 +70,9 @@
   --surface-hover:      #1e2d22;
 
   --text-main:          #f0f4f2;
-  --text-2:             #9da8a3;
-  --text-muted:         #7a8a82;
-  --text-placeholder:   #526060;
+  --text-2:             #b0bcba;
+  --text-muted:         #8ca098;
+  --text-placeholder:   #60756e;
 
   --border:             #2a3830;
   --border-focus:       #2ecc86;
@@ -72,7 +83,12 @@
 
   --danger-tint:        #2a1212;
   --danger-bd:          #5a2020;
-  --primary-light:      #049372;
+
+  /* Role Colors - Dark Mode */
+  --role-owner:         #2ecc86;
+  --role-teacher:       #60a5fa;
+  --role-manager:       #a78bfa;
+  --role-staff:         #fbbf24;
 
   /* Legacy compat */
   --bg-main:            #0a0f0d;
@@ -240,6 +256,12 @@ button {
 .ob-btn:hover:not(:disabled) { background: var(--primary-dark); }
 .ob-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
+[data-theme='dark'] .ob-btn,
+[data-theme='dark'] .task-form-submit,
+[data-theme='dark'] .name-prompt-link {
+  color: #051a10; /* Dark text for high contrast on bright green */
+}
+
 /* ── Error boundary ──────────────────────────────────────────── */
 .error-boundary-screen {
   min-height: 100vh;
@@ -284,3 +306,17 @@ button {
 }
 
 .error-boundary-screen button:hover { background: var(--primary-dark); }
+
+/* ── Spinners ────────────────────────────────────────────────── */
+.otp-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2.5px solid rgba(0,0,0,0.1);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

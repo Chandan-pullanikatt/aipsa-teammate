@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useApp } from '../context/AppContext';
+import api from '../lib/api';
 import './OtpPage.css';
 
 const OTP_LENGTH = 6;
@@ -13,6 +14,7 @@ export default function OtpPage() {
   const [loading, setLoading]     = useState(false);
   const refs    = useRef([]);
   const navigate = useNavigate();
+  const { login } = useApp();
 
   const email = localStorage.getItem('tm_pending_email') || '';
 
@@ -41,7 +43,6 @@ export default function OtpPage() {
     }
   }
 
-  // Handle paste — fill all boxes at once
   function handlePaste(e) {
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
     if (!pasted) return;
@@ -63,29 +64,18 @@ export default function OtpPage() {
 
     setLoading(true);
     setError('');
-
     try {
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'email',
-      });
-
-      if (verifyErr) {
-        setLoading(false);
-        setError('Invalid or expired code. Please request a new one.');
-        setDigits(Array(OTP_LENGTH).fill(''));
-        refs.current[0]?.focus();
-        return;
-      }
-
+      const { data } = await api.post('/auth/verify-otp', { email, token });
+      await login(data.accessToken);
       localStorage.removeItem('tm_pending_email');
       setLoading(false);
-      navigate('/app', { replace: true }); // AppShell handles no-school redirect
-
+      navigate('/app', { replace: true });
     } catch (err) {
       setLoading(false);
-      setError('Connection error. Please check your network and try again.');
+      const msg = err?.response?.data?.message;
+      setError(msg || 'Invalid or expired code. Please request a new one.');
+      setDigits(Array(OTP_LENGTH).fill(''));
+      refs.current[0]?.focus();
     }
   }
 
@@ -96,14 +86,10 @@ export default function OtpPage() {
     setError('');
 
     try {
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email,
-        options: { shouldCreateUser: true },
-      });
-      if (otpErr) setError(otpErr.message || 'Failed to resend. Please try again.');
-      else refs.current[0]?.focus();
-    } catch {
-      setError('Failed to resend. Please try again.');
+      await api.post('/auth/send-otp', { email });
+      refs.current[0]?.focus();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to resend. Please try again.');
     }
   }
 

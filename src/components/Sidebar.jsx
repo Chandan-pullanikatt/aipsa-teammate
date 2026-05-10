@@ -4,7 +4,7 @@ import Modal from './Modal';
 import './Sidebar.css';
 
 export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
-  const { schools, getGroupsForUser, canCreateGroups, addGroup, renameGroup, deleteGroup, getRoleInSchool } = useApp();
+  const { schools, getGroupsForUser, canCreateGroups, addGroup, renameGroup, deleteGroup, getRoleInSchool, getSchoolMembers } = useApp();
   const school = schools.find(s => s.id === schoolId);
   const groups = getGroupsForUser(schoolId);
   const canAdd = canCreateGroups(schoolId);
@@ -24,12 +24,25 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
   const topLevel = groups.filter(g => !g.parentId);
   const childrenOf = (pid) => groups.filter(g => g.parentId === pid);
 
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const schoolMembers = getSchoolMembers(schoolId);
+
+  function toggleUser(id) {
+    setSelectedUserIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
+  }
+
+  function selectAllTeachers() {
+    const teacherIds = schoolMembers.filter(m => m.role === 'Teacher').map(m => m.user.id);
+    setSelectedUserIds(prev => [...new Set([...prev, ...teacherIds])]);
+  }
+
   function handleAdd(e) {
     e.preventDefault();
     if (!newName.trim()) return;
-    addGroup(schoolId, newName.trim(), newParent || null);
+    addGroup(schoolId, newName.trim(), newParent || null, selectedUserIds);
     setNewName('');
     setNewParent('');
+    setSelectedUserIds([]);
     setShowAddModal(false);
   }
 
@@ -177,6 +190,29 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
                 ))}
               </select>
             </div>
+            <div className="ob-field">
+              <label>Add Members</label>
+              <div className="sidebar-member-selection">
+                <div className="sms-shortcuts">
+                  <button type="button" onClick={selectAllTeachers}>Select All Teachers</button>
+                  <button type="button" onClick={() => setSelectedUserIds([])}>Clear All</button>
+                </div>
+                <div className="sms-list">
+                  {schoolMembers.map(({ user, role }) => (
+                    <label key={user.id} className="sms-item">
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => toggleUser(user.id)}
+                      />
+                      <span className="sms-name">{user.name || user.email}</span>
+                      <span className="sms-role">{role}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="task-form-actions" style={{ paddingTop: '0.5rem' }}>
               <button type="button" className="task-form-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
               <button type="submit" className="task-form-submit" disabled={!newName.trim()}>Create</button>

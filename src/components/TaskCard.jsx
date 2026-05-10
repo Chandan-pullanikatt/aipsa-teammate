@@ -5,7 +5,14 @@ import './TaskCard.css';
 const PRIORITY_COLOR = { high: '#d32f2f', medium: '#f59e0b', low: '#2e7d32' };
 
 function formatDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
+  if (!dateStr) return '';
+  // If it's already an ISO string or has a time component, parse directly.
+  // Otherwise append T00:00:00 to keep it local to the date selected.
+  const d = (dateStr.toString().includes('T') || dateStr.toString().includes('Z'))
+    ? new Date(dateStr)
+    : new Date(dateStr + 'T00:00:00');
+    
+  if (isNaN(d.getTime())) return 'Invalid Date';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 

@@ -33,9 +33,18 @@ function MoonIcon() {
   );
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = (dateStr.toString().includes('T') || dateStr.toString().includes('Z'))
+    ? new Date(dateStr)
+    : new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'Invalid Date';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
 export default function AppShell() {
   const navigate = useNavigate();
-  const { currentUser, getCurrentUserSchools, getMyNotifications, theme, toggleTheme, loading } = useApp();
+  const { currentUser, getCurrentUserSchools, getMyNotifications, markNotificationAsRead, theme, toggleTheme, loading, getSchoolMembers } = useApp();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -113,7 +122,7 @@ export default function AppShell() {
               className="topbar-icon-btn"
               onClick={() => setShowNotifs(v => !v)}
               aria-label="Notifications"
-              title="Overdue tasks"
+              title="Notifications"
             >
               <BellIcon />
               {overdueNotifs.length > 0 && (
@@ -124,20 +133,30 @@ export default function AppShell() {
             {showNotifs && (
               <div className="notif-dropdown">
                 <div className="notif-dropdown-header">
-                  <span>Overdue Tasks</span>
+                  <span>Notifications</span>
                   <button onClick={() => setShowNotifs(false)}>✕</button>
                 </div>
                 {overdueNotifs.length === 0 ? (
-                  <div className="notif-empty">No overdue tasks. You're all caught up!</div>
+                  <div className="notif-empty">No notifications. You're all caught up!</div>
                 ) : (
                   <ul className="notif-list">
-                    {overdueNotifs.map(t => (
-                      <li key={t.id} className="notif-item">
-                        <span className="notif-dot" />
-                        <div>
-                          <p className="notif-title">{t.title}</p>
-                          <p className="notif-due">Due: {new Date(t.dueDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                    {overdueNotifs.map(n => (
+                      <li key={n.id} className={`notif-item ${n.type || 'info'}`}>
+                        <span className={`notif-dot ${n.type || 'info'}`} />
+                        <div style={{ flex: 1 }}>
+                          <p className="notif-title">{n.title}</p>
+                          <p className="notif-msg">{n.message}</p>
+                          <p className="notif-due">{formatDate(n.createdAt)}</p>
                         </div>
+                        {!n.isTask && (
+                          <button 
+                            className="notif-read-btn" 
+                            onClick={(e) => { e.stopPropagation(); markNotificationAsRead(n.id); }}
+                            title="Mark as read"
+                          >
+                            ✓
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -187,9 +206,35 @@ export default function AppShell() {
         <main className="appshell-main">
           {!selectedGroup ? (
             <div className="appshell-empty">
-              <div className="appshell-empty-icon">👈</div>
-              <h3>Select a group to get started</h3>
-              <p>Choose a group from the sidebar to view its chat, tasks, and reports.</p>
+              {(role === 'Owner' || role === 'Admin') ? (
+                <div className="owner-overview">
+                  <div className="owner-overview-header">
+                    <h3>School Overview</h3>
+                    <p>Manage your staff and groups from the sidebar or see recent members below.</p>
+                  </div>
+                  <div className="owner-members-card">
+                    <h4>Staff Members ({getSchoolMembers(school.id).length})</h4>
+                    <div className="owner-members-list">
+                      {getSchoolMembers(school.id).map(({ user, role }) => (
+                        <div key={user.id} className="owner-member-row">
+                          <div className="omr-avatar">{getInitials(user.name || user.email)}</div>
+                          <div className="omr-info">
+                            <span className="omr-name">{user.name || user.email}</span>
+                            <span className={`omr-role ${role.toLowerCase()}`}>{role}</span>
+                            <span className="omr-email">{user.email}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="appshell-empty-icon">👈</div>
+                  <h3>Select a group to get started</h3>
+                  <p>Choose a group from the sidebar to view its chat, tasks, and reports.</p>
+                </>
+              )}
             </div>
           ) : (
             <GroupView key={selectedGroup.id} group={selectedGroup} schoolId={school.id} />
