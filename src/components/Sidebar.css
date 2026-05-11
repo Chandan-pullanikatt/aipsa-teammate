@@ -35,6 +35,45 @@
   padding: 1rem 1.125rem;
 }
 
+/* ── School Overview button ── */
+.sidebar-overview-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  padding: 0.6rem 1.125rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sidebar-overview-btn:hover {
+  background: var(--surface-3);
+  color: var(--primary);
+}
+
+.sidebar-overview-btn.active {
+  background: var(--primary-tint);
+  border-left-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ── Section label ── */
+.sidebar-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0.5rem 1.125rem 0.2rem;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Group row ── */
 .sidebar-group-row {
   display: flex;
@@ -87,10 +126,9 @@
 
 .sidebar-group-row.active .sidebar-group-name-btn { font-weight: 600; }
 
-/* ── Action buttons ── */
+/* ── Action buttons / Dropdown ── */
 .sidebar-group-actions {
   display: flex;
-  gap: 0.1rem;
   opacity: 0;
   transition: opacity 0.12s;
   flex-shrink: 0;
@@ -101,68 +139,108 @@
 .sg-action-btn {
   background: transparent;
   border: none;
-  padding: 0.2rem 0.25rem;
+  padding: 0.2rem 0.3rem;
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
   line-height: 1;
   transition: background 0.12s;
-}
-
-.sg-action-btn:hover { background: var(--surface-hover); }
-.sg-action-btn.sg-delete-btn.active { background: var(--danger-tint); }
-
-/* ── Rename input ── */
-.sidebar-rename-input {
-  flex: 1;
-  background: var(--surface);
-  border: 1.5px solid var(--border-focus);
-  border-radius: 4px;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.85rem;
+  color: var(--text-muted);
   font-family: inherit;
-  outline: none;
+}
+
+.sg-action-btn:hover { background: var(--surface-hover); color: var(--text-main); }
+.sg-action-btn.open  { background: var(--surface-hover); color: var(--primary); opacity: 1; }
+
+/* Dropdown rendered via React portal at document.body (position:fixed set inline) */
+.sg-dropdown-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  z-index: 9999;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.sg-dropdown-menu button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.82rem;
+  font-weight: 500;
   color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s;
 }
 
-/* ── Delete confirm ── */
-.sidebar-delete-confirm {
-  background: var(--danger-tint);
-  border-top: 1px solid var(--danger-bd);
-  border-bottom: 1px solid var(--danger-bd);
-  padding: 0.45rem 0.75rem;
-  font-size: 0.78rem;
+.sg-dropdown-menu button:hover { background: var(--surface-hover); }
+
+.sg-dropdown-menu .sg-dropdown-delete { color: var(--danger); }
+.sg-dropdown-menu .sg-dropdown-delete:hover { background: var(--danger-tint); }
+
+.sg-dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+}
+
+/* ── Delete confirm modal ── */
+.sidebar-delete-modal p {
+  color: var(--text-main);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.sdm-warning {
   color: var(--danger);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  font-size: 0.82rem;
+  background: var(--danger-tint);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
 }
 
-.sdc-actions { display: flex; gap: 0.35rem; }
-
-.sdc-yes {
+.task-form-delete {
   background: var(--danger);
   color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
+  border-radius: var(--radius);
+  padding: 0.55rem 1.25rem;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
+  transition: opacity 0.15s;
 }
 
-.sdc-no {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
-  cursor: pointer;
+.task-form-delete:hover { opacity: 0.88; }
+
+/* ── Description textarea ── */
+.sidebar-desc-textarea {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
   font-family: inherit;
   color: var(--text-main);
+  background: var(--surface-2);
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  transition: border-color 0.15s;
 }
+
+.sidebar-desc-textarea:focus { border-color: var(--border-focus); background: var(--surface); }
 
 /* ── Footer ── */
 .sidebar-footer {

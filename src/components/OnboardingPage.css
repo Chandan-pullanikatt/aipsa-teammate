@@ -4,12 +4,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 3rem 1.5rem;
+  padding: 3rem 1.5rem 4rem;
 }
 
 .onboarding-header {
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .onboarding-header h1 {
@@ -21,21 +21,19 @@
 
 .onboarding-header p { color: var(--text-muted); font-size: 1rem; }
 
-.onboarding-cards {
-  display: flex;
-  gap: 2rem;
-  align-items: flex-start;
-  width: 100%;
-  max-width: 860px;
-}
-
+/* ── Primary join card ── */
 .onboarding-card {
-  flex: 1;
+  width: 100%;
+  max-width: 460px;
   background: var(--surface);
   border-radius: var(--radius-lg);
   padding: 2rem;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border);
+}
+
+.ob-primary-card {
+  margin-bottom: 1.25rem;
 }
 
 .ob-card-icon { font-size: 2rem; margin-bottom: 0.75rem; }
@@ -51,6 +49,66 @@
 
 .ob-form { display: flex; flex-direction: column; gap: 1rem; }
 
+/* ── Register section toggle ── */
+.ob-register-section {
+  width: 100%;
+  max-width: 460px;
+}
+
+.ob-register-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  background: var(--surface);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.ob-register-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-tint);
+}
+
+.ob-register-toggle.open {
+  border-color: var(--primary);
+  border-style: solid;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  color: var(--primary);
+  background: var(--primary-tint);
+}
+
+.ob-reg-toggle-icon { font-size: 1.25rem; flex-shrink: 0; }
+
+.ob-reg-toggle-text { flex: 1; }
+
+.ob-reg-toggle-arrow {
+  font-size: 0.7rem;
+  color: var(--text-placeholder);
+}
+
+/* ── Register form expanded ── */
+.ob-register-form-wrap {
+  background: var(--surface);
+  border: 1.5px solid var(--primary);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: 1.5rem;
+}
+
+.ob-reg-desc { margin-bottom: 1rem; }
+
+/* ── Buttons ── */
 .ob-btn-outline {
   background: transparent;
   color: var(--primary);
@@ -79,38 +137,8 @@
 
 @keyframes ob-spin { to { transform: rotate(360deg); } }
 
-.onboarding-divider {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding-top: 5rem;
-  flex-shrink: 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-@media (max-width: 768px) {
-  .onboarding-cards { flex-direction: column; }
-  .onboarding-divider {
-    flex-direction: row;
-    padding-top: 0;
-    gap: 1rem;
-    width: 100%;
-    max-width: 860px;
-  }
-  .onboarding-divider::before,
-  .onboarding-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
-}
-
 @media (max-width: 480px) {
-  .onboarding-page { padding: 2rem 1rem; }
+  .onboarding-page { padding: 2rem 1rem 3rem; }
   .onboarding-header h1 { font-size: 1.5rem; }
   .onboarding-card { padding: 1.5rem; }
 }

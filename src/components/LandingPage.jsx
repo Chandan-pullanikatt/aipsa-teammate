@@ -72,7 +72,7 @@ export default function LandingPage({ theme, toggleTheme }) {
           </motion.button>
         </div>
 
-        <p className="hero-footer">Powered by TeamMate</p>
+        <p className="hero-footer">Powered by AIPSA</p>
       </section>
     </div>
   );

@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import ChatTab from './ChatTab';
-import TasksTab from './TasksTab';
 import ReportsTab from './ReportsTab';
 import './GroupView.css';
 
 export default function GroupView({ group, schoolId }) {
-  const [tab, setTab] = useState('chat');
+  const [showReports, setShowReports] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setShowReports(false);
     const t = setTimeout(() => setLoading(false), 100);
     return () => clearTimeout(t);
   }, [group.id]);
@@ -17,9 +17,9 @@ export default function GroupView({ group, schoolId }) {
   if (loading) {
     return (
       <div className="group-view">
-        <div className="group-header skeleton-line" style={{ height: 28, width: 200, marginBottom: '1rem' }} />
-        <div className="group-tabs skeleton-tabs">
-          {[1,2,3].map(i => <div key={i} className="skeleton-line" style={{ height: 20, width: 60 }} />)}
+        <div className="group-header">
+          <div className="skeleton-line" style={{ height: 24, width: 180 }} />
+          <div className="skeleton-line" style={{ height: 30, width: 96, borderRadius: 6 }} />
         </div>
         <div className="group-content" style={{ padding: '1.25rem' }}>
           {[1,2,3,4].map(i => (
@@ -34,22 +34,19 @@ export default function GroupView({ group, schoolId }) {
     <div className="group-view">
       <div className="group-header">
         <h2>{group.name}</h2>
-      </div>
-      <div className="group-tabs">
-        {['chat', 'tasks', 'reports'].map(t => (
-          <button
-            key={t}
-            className={`group-tab${tab === t ? ' active' : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
+        <button
+          className={`group-reports-btn${showReports ? ' active' : ''}`}
+          onClick={() => setShowReports(v => !v)}
+          title={showReports ? 'Back to Chat' : 'View Reports'}
+        >
+          {showReports ? '← Chat' : '📊 Reports'}
+        </button>
       </div>
       <div className="group-content">
-        {tab === 'chat' && <ChatTab groupId={group.id} schoolId={schoolId} />}
-        {tab === 'tasks' && <TasksTab groupId={group.id} schoolId={schoolId} />}
-        {tab === 'reports' && <ReportsTab groupId={group.id} />}
+        {showReports
+          ? <ReportsTab groupId={group.id} />
+          : <ChatTab groupId={group.id} schoolId={schoolId} />
+        }
       </div>
     </div>
   );

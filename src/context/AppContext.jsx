@@ -307,19 +307,20 @@ export function AppProvider({ children }) {
 
   // ── Groups ────────────────────────────────────────────────
 
-  async function addGroup(schoolId, name, parentId = null, userIds = []) {
+  async function addGroup(schoolId, name, parentId = null, userIds = [], description = null) {
     const { data } = await api.post('/groups', {
       schoolId,
       name: name.trim(),
       parentId: parentId || undefined,
       userIds: userIds.length ? userIds : undefined,
+      description: description || undefined,
     });
 
     setState(prev => ({
       ...prev,
       groups: [
         ...prev.groups,
-        { id: data.id, schoolId: data.schoolId, name: data.name, parentId: data.parentId },
+        { id: data.id, schoolId: data.schoolId, name: data.name, parentId: data.parentId, description: data.description || null },
       ],
       groupMembers: [...prev.groupMembers, ...(data.groupMembers || [])],
     }));
@@ -327,11 +328,18 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  async function renameGroup(groupId, newName) {
-    await api.patch(`/groups/${groupId}`, { name: newName.trim() });
+  async function updateGroup(groupId, { name, description }) {
+    await api.patch(`/groups/${groupId}`, {
+      name: name?.trim(),
+      description: description ?? undefined,
+    });
     setState(prev => ({
       ...prev,
-      groups: prev.groups.map(g => g.id === groupId ? { ...g, name: newName.trim() } : g),
+      groups: prev.groups.map(g =>
+        g.id === groupId
+          ? { ...g, name: name?.trim() || g.name, description: description !== undefined ? description : g.description }
+          : g
+      ),
     }));
   }
 
@@ -513,7 +521,7 @@ export function AppProvider({ children }) {
       // membership
       joinSchool, removeMember,
       // groups
-      addGroup, renameGroup, deleteGroup,
+      addGroup, updateGroup, deleteGroup,
       // tasks
       addTask, toggleTask, editTask, deleteTask,
       // queries

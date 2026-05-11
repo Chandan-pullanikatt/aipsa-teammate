@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import api from '../lib/api';
 import { getSocket } from '../lib/socket';
+import Modal from './Modal';
 import './ChatTab.css';
 
 // ── Slash commands ────────────────────────────────────────────
@@ -122,7 +123,7 @@ function TodoBubble({ msg, onToggle }) {
 const messageCache = {};
 
 export default function ChatTab({ groupId, schoolId }) {
-  const { currentUser, addTask, canCreateTasks, getGroupMembers, getUserById } = useApp();
+  const { currentUser, addTask, toggleTask, getGroupTasks, canCreateTasks, getGroupMembers, getUserById } = useApp();
   const members = getGroupMembers(groupId);
   const canAdd  = canCreateTasks(schoolId);
 
@@ -150,11 +151,14 @@ export default function ChatTab({ groupId, schoolId }) {
   const [cmd,          setCmd]          = useState(null);
   const [announceMode, setAnnounceMode] = useState(false);
 
-  // ── Task form ──
+  // ── Task panel ──
+  const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle,    setTaskTitle]    = useState('');
   const [taskAssignee, setTaskAssignee] = useState('');
   const [taskDue,      setTaskDue]      = useState('');
   const [taskPriority, setTaskPriority] = useState('medium');
+
+  const pendingTasks = getGroupTasks(groupId).filter(t => t.status === 'pending');
 
   // ── Poll form ──
   const [pollQ,    setPollQ]    = useState('');
@@ -358,6 +362,7 @@ export default function ChatTab({ groupId, schoolId }) {
     const lines = text.split('\n');
     lines[lines.length - 1] = '';
     setText(lines.join('\n').trimEnd());
+    if (command.id === 'task') { setCmd('tasks'); setShowTaskForm(false); return; }
     setCmd(command.id);
     if (command.id === 'image') imageInputRef.current?.click();
     if (command.id === 'announce') { setAnnounceMode(true); setCmd(null); textRef.current?.focus(); }
@@ -366,6 +371,7 @@ export default function ChatTab({ groupId, schoolId }) {
   function cancelCmd() {
     setCmd(null);
     setAnnounceMode(false);
+    setShowTaskForm(false);
     setTaskTitle(''); setTaskAssignee(''); setTaskDue(''); setTaskPriority('medium');
     setPollQ(''); setPollOpts(['', '']);
     setTodoTitle(''); setTodoItems(['', '']);
@@ -397,7 +403,9 @@ export default function ChatTab({ groupId, schoolId }) {
     const assigneeName = members.find(m => m.id === taskAssignee)?.name || '';
     await addTask(groupId, { title: taskTitle.trim(), assignedTo: taskAssignee, dueDate: taskDue, priority: taskPriority });
     await sendMessage(taskTitle.trim(), { type: 'task', taskTitle: taskTitle.trim(), taskAssignee: assigneeName });
-    cancelCmd();
+    // Go back to task list within the panel
+    setTaskTitle(''); setTaskAssignee(''); setTaskDue(''); setTaskPriority('medium');
+    setShowTaskForm(false);
   }
 
   // ── Image upload ──────────────────────────────────────────
@@ -556,30 +564,55 @@ export default function ChatTab({ groupId, schoolId }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Command panels ── */}
-      {cmd === 'task' && canAdd && (
-        <div className="cmd-panel">
-          <div className="cmd-panel-header"><span>✅ Quick Task</span><button onClick={cancelCmd}>✕</button></div>
-          <form onSubmit={submitTask} className="cmd-form">
-            <input className="cmd-input" placeholder="Task title *" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} autoFocus maxLength={200} />
-            <div className="cmd-row">
-              <select className="cmd-select" value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)}>
-                <option value="">Assign to…</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
-              </select>
-              <input type="date" className="cmd-select" value={taskDue} onChange={e => setTaskDue(e.target.value)} />
-              <select className="cmd-select" value={taskPriority} onChange={e => setTaskPriority(e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div className="cmd-actions">
-              <button type="button" className="cmd-cancel" onClick={cancelCmd}>Cancel</button>
-              <button type="submit" className="cmd-submit" disabled={!taskTitle.trim()}>Create Task</button>
-            </div>
-          </form>
-        </div>
+      {/* ── Tasks popup (slash /task) ── */}
+      {cmd === 'tasks' && (
+        <Modal title={showTaskForm ? '✅ Add Task' : '✅ Pending Tasks'} onClose={cancelCmd} width={440}>
+          {showTaskForm ? (
+            <form onSubmit={submitTask} className="cmd-form">
+              <input className="cmd-input" placeholder="Task title *" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} autoFocus maxLength={200} />
+              <div className="cmd-row">
+                <select className="cmd-select" value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)}>
+                  <option value="">Assign to…</option>
+                  {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+                </select>
+                <input type="date" className="cmd-select" value={taskDue} onChange={e => setTaskDue(e.target.value)} />
+                <select className="cmd-select" value={taskPriority} onChange={e => setTaskPriority(e.target.value)}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div className="cmd-actions">
+                <button type="button" className="cmd-cancel" onClick={() => setShowTaskForm(false)}>← Back</button>
+                <button type="submit" className="cmd-submit" disabled={!taskTitle.trim()}>Create Task</button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="cmd-tasks-list">
+                {pendingTasks.length === 0 && (
+                  <div className="cmd-tasks-empty">No pending tasks.</div>
+                )}
+                {pendingTasks.map(task => (
+                  <div key={task.id} className="cmd-task-item">
+                    <button
+                      className="cmd-task-toggle"
+                      onClick={() => toggleTask(task.id)}
+                      title="Mark as complete"
+                    />
+                    <span className="cmd-task-title">{task.title}</span>
+                    <span className={`cmd-task-prio prio-${task.priority}`}>{task.priority}</span>
+                  </div>
+                ))}
+              </div>
+              {canAdd && (
+                <div className="cmd-tasks-footer">
+                  <button className="cmd-add-task-btn" onClick={() => setShowTaskForm(true)}>+ Add Task</button>
+                </div>
+              )}
+            </>
+          )}
+        </Modal>
       )}
 
       {imgUploading && (
