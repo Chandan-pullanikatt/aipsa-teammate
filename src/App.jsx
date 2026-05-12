@@ -8,6 +8,7 @@ import OtpPage from './components/OtpPage';
 import OnboardingPage from './components/OnboardingPage';
 import AppShell from './components/AppShell';
 import ProfilePage from './components/ProfilePage';
+import JoinPage from './components/JoinPage';
 import './index.css';
 
 function ThemeSync() {
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="/dashboard"  element={<AppShell />} />
         <Route path="/dashboard/*" element={<AppShell />} />
         <Route path="/profile"    element={<ProfilePage />} />
+        <Route path="/join"       element={<JoinPage />} />
         <Route path="*"           element={<Navigate to="/" replace />} />
       </Routes>
     </>

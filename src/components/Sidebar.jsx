@@ -5,36 +5,47 @@ import Modal from './Modal';
 import './Sidebar.css';
 
 export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
-  const { schools, getGroupsForUser, canCreateGroups, addGroup, updateGroup, deleteGroup, getSchoolMembers } = useApp();
-  const school = schools.find(s => s.id === schoolId);
-  const groups = getGroupsForUser(schoolId);
-  const canAdd = canCreateGroups(schoolId);
-  const isAdmin = canAdd;
+  const {
+    schools, getGroupsForUser, canCreateGroups, canManageGroup,
+    addGroup, updateGroup, deleteGroup, addGroupMembers,
+    getSchoolMembers, getGroupMembers,
+  } = useApp();
 
-  // New group form
-  const [showAddModal, setShowAddModal]   = useState(false);
-  const [newName,      setNewName]        = useState('');
-  const [newDesc,      setNewDesc]        = useState('');
-  const [newParent,    setNewParent]      = useState('');
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const school      = schools.find(s => s.id === schoolId);
+  const groups      = getGroupsForUser(schoolId);
+  const canAdd      = canCreateGroups(schoolId);
+  const isAdmin     = canManageGroup(schoolId);
   const schoolMembers = getSchoolMembers(schoolId);
 
-  // Dropdown — rendered via portal to escape overflow:hidden
-  const [openDropdownId,  setOpenDropdownId]  = useState(null);
-  const [dropdownGroup,   setDropdownGroup]   = useState(null);
-  const [dropdownPos,     setDropdownPos]     = useState({ top: 0, left: 0 });
+  // ── New group form ──
+  const [showAddModal,    setShowAddModal]    = useState(false);
+  const [newName,         setNewName]         = useState('');
+  const [newDesc,         setNewDesc]         = useState('');
+  const [newParent,       setNewParent]       = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
 
-  // Update modal
+  // ── Dropdown portal ──
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const [dropdownGroup,  setDropdownGroup]  = useState(null);
+  const [dropdownPos,    setDropdownPos]    = useState({ top: 0, left: 0 });
+
+  // ── Update modal ──
   const [editGroup, setEditGroup] = useState(null);
   const [editName,  setEditName]  = useState('');
   const [editDesc,  setEditDesc]  = useState('');
 
-  // Delete confirm
+  // ── Delete confirm ──
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  const topLevel = groups.filter(g => !g.parentId);
+  // ── Add members modal ──
+  const [membersGroup,     setMembersGroup]     = useState(null);
+  const [addMemberIds,     setAddMemberIds]     = useState([]);
+  const [membersLoading,   setMembersLoading]   = useState(false);
+
+  const topLevel   = groups.filter(g => !g.parentId);
   const childrenOf = (pid) => groups.filter(g => g.parentId === pid);
 
+  // ── New group helpers ──
   function toggleUser(id) {
     setSelectedUserIds(prev =>
       prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]
@@ -55,6 +66,7 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     setShowAddModal(false);
   }
 
+  // ── Dropdown ──
   function closeDropdown() {
     setOpenDropdownId(null);
     setDropdownGroup(null);
@@ -64,11 +76,12 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     e.stopPropagation();
     if (openDropdownId === group.id) { closeDropdown(); return; }
     const rect = e.currentTarget.getBoundingClientRect();
-    setDropdownPos({ top: rect.bottom + 4, left: rect.right - 120 });
+    setDropdownPos({ top: rect.bottom + 4, left: rect.right - 130 });
     setOpenDropdownId(group.id);
     setDropdownGroup(group);
   }
 
+  // ── Update ──
   function openEditModal(group) {
     closeDropdown();
     setEditGroup(group);
@@ -83,6 +96,7 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     setEditGroup(null);
   }
 
+  // ── Delete ──
   function handleDeleteClick(groupId) {
     closeDropdown();
     setDeleteConfirmId(groupId);
@@ -94,6 +108,34 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     setDeleteConfirmId(null);
   }
 
+  // ── Add members ──
+  function openMembersModal(group) {
+    closeDropdown();
+    const currentMemberIds = getGroupMembers(group.id).map(u => u.id);
+    // Non-members of this group (from the whole school)
+    setMembersGroup({ group, currentMemberIds });
+    setAddMemberIds([]);
+  }
+
+  function toggleAddMember(id) {
+    setAddMemberIds(prev =>
+      prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]
+    );
+  }
+
+  async function handleAddMembers(e) {
+    e.preventDefault();
+    if (!addMemberIds.length || !membersGroup) return;
+    setMembersLoading(true);
+    try {
+      await addGroupMembers(membersGroup.group.id, addMemberIds);
+      setMembersGroup(null);
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
+  // ── GroupItem ──
   function GroupItem({ group, depth = 0 }) {
     const children = childrenOf(group.id);
     const isActive = selectedGroupId === group.id;
@@ -135,13 +177,17 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
     );
   }
 
+  // ── Non-members for the add-members modal ──
+  const nonMembers = membersGroup
+    ? schoolMembers.filter(({ user }) => !membersGroup.currentMemberIds.includes(user.id))
+    : [];
+
   return (
     <div className="sidebar">
       <div className="sidebar-school-header">
         <span className="sidebar-school-name">{school?.name || 'School'}</span>
       </div>
 
-      {/* School Overview button */}
       <button
         className={`sidebar-overview-btn${!selectedGroupId ? ' active' : ''}`}
         onClick={() => onSelectGroup(null)}
@@ -166,21 +212,14 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
         </div>
       )}
 
-      {/* ── Dropdown portal — rendered at body to escape overflow:hidden ── */}
+      {/* ── Dropdown portal ── */}
       {openDropdownId && createPortal(
         <>
           <div className="sg-dropdown-backdrop" onClick={closeDropdown} />
-          <div
-            className="sg-dropdown-menu"
-            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}
-          >
+          <div className="sg-dropdown-menu" style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}>
             <button onClick={() => openEditModal(dropdownGroup)}>Update</button>
-            <button
-              className="sg-dropdown-delete"
-              onClick={() => handleDeleteClick(openDropdownId)}
-            >
-              Delete
-            </button>
+            <button onClick={() => openMembersModal(dropdownGroup)}>Add Members</button>
+            <button className="sg-dropdown-delete" onClick={() => handleDeleteClick(openDropdownId)}>Delete</button>
           </div>
         </>,
         document.body
@@ -192,33 +231,20 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
           <form onSubmit={handleAdd} className="sidebar-new-form">
             <div className="ob-field">
               <label>Group Name *</label>
-              <input
-                type="text"
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="e.g. Science Lab"
-                maxLength={60}
-                autoFocus
-              />
+              <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="e.g. Science Lab" maxLength={60} autoFocus />
             </div>
             <div className="ob-field">
               <label>Description (optional)</label>
-              <textarea
-                value={newDesc}
-                onChange={e => setNewDesc(e.target.value)}
-                placeholder="Brief description of this group"
-                maxLength={500}
-                rows={2}
-                className="sidebar-desc-textarea"
-              />
+              <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)}
+                placeholder="Brief description of this group" maxLength={500} rows={2}
+                className="sidebar-desc-textarea" />
             </div>
             <div className="ob-field">
               <label>Parent Group (optional)</label>
               <select value={newParent} onChange={e => setNewParent(e.target.value)}>
                 <option value="">None (top-level)</option>
-                {topLevel.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
+                {topLevel.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
             <div className="ob-field">
@@ -231,11 +257,8 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
                 <div className="sms-list">
                   {schoolMembers.map(({ user, role }) => (
                     <label key={user.id} className="sms-item">
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.includes(user.id)}
-                        onChange={() => toggleUser(user.id)}
-                      />
+                      <input type="checkbox" checked={selectedUserIds.includes(user.id)}
+                        onChange={() => toggleUser(user.id)} />
                       <span className="sms-name">{user.name || user.email}</span>
                       <span className="sms-role">{role}</span>
                     </label>
@@ -257,24 +280,14 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
           <form onSubmit={handleUpdate} className="sidebar-new-form">
             <div className="ob-field">
               <label>Group Name *</label>
-              <input
-                type="text"
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                maxLength={60}
-                autoFocus
-              />
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                maxLength={60} autoFocus />
             </div>
             <div className="ob-field">
               <label>Description</label>
-              <textarea
-                value={editDesc}
-                onChange={e => setEditDesc(e.target.value)}
-                placeholder="Brief description of this group"
-                maxLength={500}
-                rows={3}
-                className="sidebar-desc-textarea"
-              />
+              <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
+                placeholder="Brief description of this group" maxLength={500} rows={3}
+                className="sidebar-desc-textarea" />
             </div>
             <div className="task-form-actions" style={{ paddingTop: '0.5rem' }}>
               <button type="button" className="task-form-cancel" onClick={() => setEditGroup(null)}>Cancel</button>
@@ -284,24 +297,62 @@ export default function Sidebar({ schoolId, selectedGroupId, onSelectGroup }) {
         </Modal>
       )}
 
+      {/* ── Add Members Modal ── */}
+      {membersGroup && (
+        <Modal title={`Add Members — ${membersGroup.group.name}`} onClose={() => setMembersGroup(null)} width={400}>
+          <form onSubmit={handleAddMembers} className="sidebar-new-form">
+            {nonMembers.length === 0 ? (
+              <p className="sms-all-added">All school members are already in this group.</p>
+            ) : (
+              <>
+                <p className="sms-pick-hint">Select members to add to this group:</p>
+                <div className="sidebar-member-selection">
+                  <div className="sms-shortcuts">
+                    <button type="button"
+                      onClick={() => setAddMemberIds(nonMembers.filter(m => m.role === 'Teacher').map(m => m.user.id))}>
+                      Select All Teachers
+                    </button>
+                    <button type="button" onClick={() => setAddMemberIds([])}>Clear All</button>
+                  </div>
+                  <div className="sms-list">
+                    {nonMembers.map(({ user, role }) => (
+                      <label key={user.id} className="sms-item">
+                        <input type="checkbox" checked={addMemberIds.includes(user.id)}
+                          onChange={() => toggleAddMember(user.id)} />
+                        <span className="sms-name">{user.name || user.email}</span>
+                        <span className="sms-role">{role}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="task-form-actions" style={{ paddingTop: '0.5rem' }}>
+              <button type="button" className="task-form-cancel" onClick={() => setMembersGroup(null)}>Cancel</button>
+              {nonMembers.length > 0 && (
+                <button type="submit" className="task-form-submit"
+                  disabled={!addMemberIds.length || membersLoading}>
+                  {membersLoading ? 'Adding…' : `Add ${addMemberIds.length || ''} Member${addMemberIds.length !== 1 ? 's' : ''}`}
+                </button>
+              )}
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {/* ── Delete Confirm Modal ── */}
       {deleteConfirmId && (
         <Modal title="Delete Group" onClose={() => setDeleteConfirmId(null)} width={360}>
           <div className="sidebar-delete-modal">
-            <p>
-              Are you sure you want to delete{' '}
+            <p>Are you sure you want to delete{' '}
               <strong>"{groups.find(g => g.id === deleteConfirmId)?.name}"</strong>?
             </p>
             <p className="sdm-warning">
               This will permanently delete all messages, tasks, and sub-groups inside it.
             </p>
             <div className="task-form-actions">
-              <button type="button" className="task-form-cancel" onClick={() => setDeleteConfirmId(null)}>
-                Cancel
-              </button>
-              <button type="button" className="task-form-delete" onClick={() => executeDelete(deleteConfirmId)}>
-                Delete
-              </button>
+              <button type="button" className="task-form-cancel" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
+              <button type="button" className="task-form-delete" onClick={() => executeDelete(deleteConfirmId)}>Delete</button>
             </div>
           </div>
         </Modal>

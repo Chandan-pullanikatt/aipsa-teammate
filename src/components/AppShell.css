@@ -604,6 +604,182 @@
 .ov-prio-dot.prio-medium { background: #f59e0b; }
 .ov-prio-dot.prio-low    { background: var(--primary); }
 
+/* ── Invite management panel ── */
+.ov-invite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ov-invite-toggle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.ov-invite-panel {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Invite code cards */
+.ov-codes-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ov-code-card {
+  flex: 1;
+  min-width: 160px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ov-code-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.ov-code-val {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.05em;
+  font-family: monospace;
+}
+
+.ov-code-regen {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.ov-code-regen:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Email invite form */
+.ov-invite-form-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.ov-invite-success {
+  font-size: 0.82rem;
+  color: var(--success);
+  background: #dcfce7;
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.ov-invite-inputs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ov-invite-email {
+  flex: 1;
+  min-width: 180px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--text-main);
+  background: var(--surface-2);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ov-invite-email:focus { border-color: var(--border-focus); background: var(--surface); }
+
+.ov-invite-role {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.5rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--text-main);
+  background: var(--surface-2);
+  outline: none;
+  cursor: pointer;
+}
+
+.ov-invite-send {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.ov-invite-send:disabled { opacity: 0.45; cursor: not-allowed; }
+.ov-invite-send:not(:disabled):hover { opacity: 0.85; }
+
+/* Pending invites */
+.ov-pending-invites { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.ov-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.ov-pending-email { flex: 1; color: var(--text-main); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ov-badge.admin   { background: #ede9fe; color: #7c3aed; }
+.ov-badge.manager { background: #fef3c7; color: #b45309; }
+.ov-badge.user    { background: var(--primary-tint); color: var(--primary); }
+
+.ov-pending-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.25rem;
+  border-radius: 3px;
+  transition: color 0.12s;
+  flex-shrink: 0;
+}
+.ov-pending-cancel:hover { color: var(--danger); }
+
 /* ── No school ── */
 .appshell-no-school {
   display: flex;

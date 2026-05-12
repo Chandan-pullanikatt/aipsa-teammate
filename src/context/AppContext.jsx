@@ -328,6 +328,20 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function addGroupMembers(groupId, userIds) {
+    const { data } = await api.patch(`/groups/${groupId}/members`, { userIds });
+    setState(prev => ({
+      ...prev,
+      groupMembers: [
+        ...prev.groupMembers,
+        ...userIds
+          .filter(uid => !prev.groupMembers.some(gm => gm.groupId === groupId && gm.userId === uid))
+          .map(uid => ({ userId: uid, groupId })),
+      ],
+    }));
+    return data;
+  }
+
   async function updateGroup(groupId, { name, description }) {
     await api.patch(`/groups/${groupId}`, {
       name: name?.trim(),
@@ -506,15 +520,50 @@ export function AppProvider({ children }) {
   // ── Permissions ───────────────────────────────────────────
 
   function canCreateTasks(schoolId) {
-    return ['Owner', 'Admin', 'Manager', 'Teacher'].includes(getRoleInSchool(schoolId));
+    return ['Owner', 'Admin', 'Manager'].includes(getRoleInSchool(schoolId));
   }
 
   function canCreateGroups(schoolId) {
     return ['Owner', 'Admin'].includes(getRoleInSchool(schoolId));
   }
 
+  function canManageGroup(schoolId) {
+    return ['Owner', 'Admin', 'Manager'].includes(getRoleInSchool(schoolId));
+  }
+
   function canManageMembers(schoolId) {
-    return getRoleInSchool(schoolId) === 'Owner';
+    return ['Owner', 'Admin'].includes(getRoleInSchool(schoolId));
+  }
+
+  function canSendInvites(schoolId) {
+    return ['Owner', 'Admin'].includes(getRoleInSchool(schoolId));
+  }
+
+  // ── Email invites ─────────────────────────────────────────
+
+  async function sendEmailInvite(schoolId, email, role) {
+    const { data } = await api.post('/invites/email', { schoolId, email, role });
+    return data;
+  }
+
+  async function getPendingInvites(schoolId) {
+    const { data } = await api.get(`/invites/email?schoolId=${schoolId}`);
+    return data;
+  }
+
+  async function cancelEmailInvite(inviteId) {
+    await api.delete(`/invites/email/${inviteId}`);
+  }
+
+  async function acceptEmailInvite(token) {
+    const { data } = await api.post('/memberships/accept-invite', { token });
+    if (data.success) {
+      // Reload full state after joining
+      const bootstrap = await api.get('/app/bootstrap');
+      const { user, schools, memberships, groups, groupMembers, tasks, users, inviteCodes, notifications } = bootstrap.data;
+      setState(prev => ({ ...prev, currentUser: user, schools, memberships, groups, groupMembers, tasks, users, inviteCodes, notifications: notifications || [] }));
+    }
+    return data;
   }
 
   return (
@@ -531,7 +580,7 @@ export function AppProvider({ children }) {
       // membership
       joinSchool, removeMember,
       // groups
-      addGroup, updateGroup, deleteGroup,
+      addGroup, updateGroup, deleteGroup, addGroupMembers,
       // tasks
       addTask, toggleTask, editTask, deleteTask, toggleTaskTodo,
       // queries
@@ -541,7 +590,9 @@ export function AppProvider({ children }) {
       // notifications
       markNotificationAsRead,
       // permissions
-      canCreateTasks, canCreateGroups, canManageMembers,
+      canCreateTasks, canCreateGroups, canManageGroup, canManageMembers, canSendInvites,
+      // invites
+      sendEmailInvite, getPendingInvites, cancelEmailInvite, acceptEmailInvite,
     }}>
       {children}
     </AppContext.Provider>

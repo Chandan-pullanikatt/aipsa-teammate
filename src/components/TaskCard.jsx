@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import './TaskCard.css';
 
 const PRIORITY_COLOR = { high: '#d32f2f', medium: '#f59e0b', low: '#2e7d32' };
+
+function genId() { return Math.random().toString(36).slice(2, 9); }
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -19,9 +21,11 @@ function isOverdue(task) {
 }
 
 export default function TaskCard({ task, onEdit, canManage = false }) {
-  const { toggleTask, deleteTask, toggleTaskTodo, getUserById } = useApp();
+  const { toggleTask, deleteTask, toggleTaskTodo, editTask, getUserById } = useApp();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [showTodos, setShowTodos] = useState(false);
+  const [showTodos,     setShowTodos]     = useState(false);
+  const [newTodoText,   setNewTodoText]   = useState('');
+  const addInputRef = useRef(null);
 
   const assignee = getUserById(task.assignedTo);
   const overdue  = isOverdue(task);
@@ -32,10 +36,31 @@ export default function TaskCard({ task, onEdit, canManage = false }) {
   const todos     = Array.isArray(task.todoItems) ? task.todoItems : [];
   const doneTodos = todos.filter(i => i.done).length;
   const todoPct   = todos.length ? Math.round((doneTodos / todos.length) * 100) : 0;
+  const editable  = canManage && task.status !== 'completed';
 
   function handleDelete() {
-    if (confirmDelete) { deleteTask(task.id); }
-    else { setConfirmDelete(true); }
+    if (confirmDelete) deleteTask(task.id);
+    else setConfirmDelete(true);
+  }
+
+  function handleAddTodo(e) {
+    e.preventDefault();
+    const text = newTodoText.trim();
+    if (!text) return;
+    const updated = [...todos, { id: genId(), text, done: false }];
+    editTask(task.id, { todoItems: updated });
+    setNewTodoText('');
+    addInputRef.current?.focus();
+  }
+
+  function handleRemoveTodo(id) {
+    const updated = todos.filter(i => i.id !== id);
+    editTask(task.id, { todoItems: updated.length ? updated : null });
+  }
+
+  function openTodos() {
+    setShowTodos(true);
+    setTimeout(() => addInputRef.current?.focus(), 50);
   }
 
   return (
@@ -74,9 +99,13 @@ export default function TaskCard({ task, onEdit, canManage = false }) {
                 ☑ {doneTodos}/{todos.length}
               </button>
             )}
+            {todos.length === 0 && editable && (
+              <button className="task-todo-init-btn" onClick={openTodos} title="Add to-do list">
+                + Add To-Do
+              </button>
+            )}
           </div>
 
-          {/* Todo progress bar */}
           {todos.length > 0 && (
             <div className="task-todo-bar-wrap">
               <div className="task-todo-bar">
@@ -93,7 +122,7 @@ export default function TaskCard({ task, onEdit, canManage = false }) {
 
         {canManage && (
           <div className="task-actions">
-            <button className="task-action-btn" onClick={() => onEdit(task)} title="Edit">✏️</button>
+            <button className="task-action-btn" onClick={() => onEdit(task)} title="Edit task">✏️</button>
             <button
               className={`task-action-btn task-delete-btn${confirmDelete ? ' confirming' : ''}`}
               onClick={handleDelete}
@@ -105,8 +134,8 @@ export default function TaskCard({ task, onEdit, canManage = false }) {
         )}
       </div>
 
-      {/* Expandable todo list */}
-      {showTodos && todos.length > 0 && (
+      {/* ── Expandable to-do list ── */}
+      {showTodos && (
         <div className="task-todo-list">
           {todos.map(item => (
             <div key={item.id} className={`task-todo-item${item.done ? ' done' : ''}`}>
@@ -118,9 +147,40 @@ export default function TaskCard({ task, onEdit, canManage = false }) {
               >
                 {item.done && '✓'}
               </button>
-              <span>{item.text}</span>
+              <span className="task-todo-text">{item.text}</span>
+              {editable && (
+                <button
+                  className="task-todo-remove"
+                  onClick={() => handleRemoveTodo(item.id)}
+                  title="Remove item"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))}
+
+          {/* Inline add-item row */}
+          {editable && (
+            <form className="task-todo-add-row" onSubmit={handleAddTodo}>
+              <input
+                ref={addInputRef}
+                className="task-todo-add-input"
+                placeholder="Add an item…"
+                value={newTodoText}
+                onChange={e => setNewTodoText(e.target.value)}
+                maxLength={200}
+              />
+              <button
+                type="submit"
+                className="task-todo-add-submit"
+                disabled={!newTodoText.trim()}
+                title="Add item"
+              >
+                +
+              </button>
+            </form>
+          )}
         </div>
       )}
 

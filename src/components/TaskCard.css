@@ -173,6 +173,21 @@
   text-align: right;
 }
 
+/* ── Init button (no todos yet) ── */
+.task-todo-init-btn {
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 100px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
+}
+.task-todo-init-btn:hover { border-color: var(--primary); color: var(--primary); }
+
 /* ── Expandable todo list ── */
 .task-todo-list {
   margin-top: 0.6rem;
@@ -191,7 +206,68 @@
   color: var(--text-main);
 }
 
-.task-todo-item.done span { text-decoration: line-through; color: var(--text-muted); }
+.task-todo-text { flex: 1; min-width: 0; }
+
+.task-todo-item.done .task-todo-text { text-decoration: line-through; color: var(--text-muted); }
+
+.task-todo-remove {
+  background: none;
+  border: none;
+  color: var(--text-placeholder);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.task-todo-item:hover .task-todo-remove { opacity: 1; }
+.task-todo-remove:hover { color: var(--danger); }
+
+/* ── Inline add-item row ── */
+.task-todo-add-row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+}
+
+.task-todo-add-input {
+  flex: 1;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text-main);
+  background: var(--surface-2);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.task-todo-add-input:focus { border-color: var(--border-focus); background: var(--surface); }
+.task-todo-add-input::placeholder { color: var(--text-placeholder); }
+
+.task-todo-add-submit {
+  width: 28px;
+  height: 28px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.task-todo-add-submit:disabled { opacity: 0.35; cursor: not-allowed; }
+.task-todo-add-submit:not(:disabled):hover { opacity: 0.85; }
 
 .task-todo-check {
   width: 16px;

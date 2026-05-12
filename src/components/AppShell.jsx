@@ -42,13 +42,28 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getSchoolMembers, getUserById, getInitials }) {
-  const isOwner = role === 'Owner';
+function SchoolOverview({ school, role }) {
+  const {
+    inviteCodes, regenerateCode,
+    getGroupsForUser, getGroupTasks, getSchoolMembers, getUserById,
+    sendEmailInvite, getPendingInvites, cancelEmailInvite,
+  } = useApp();
 
-  const groups = getGroupsForUser(school.id);
+  const [pendingInvites,  setPendingInvites]  = useState([]);
+  const [inviteEmail,     setInviteEmail]     = useState('');
+  const [inviteRole,      setInviteRole]      = useState('User');
+  const [inviteLoading,   setInviteLoading]   = useState(false);
+  const [inviteError,     setInviteError]     = useState('');
+  const [inviteSuccess,   setInviteSuccess]   = useState('');
+  const [showInvitePanel, setShowInvitePanel] = useState(false);
+
+  const isOwnerOrAdmin = ['Owner', 'Admin'].includes(role);
+  const isOwner        = role === 'Owner';
+  const codes          = inviteCodes[school.id] || {};
+
+  const groups   = getGroupsForUser(school.id);
   const allTasks = groups.flatMap(g => getGroupTasks(g.id));
 
-  // Per-group task stats
   const groupStats = groups.map(g => {
     const tasks     = getGroupTasks(g.id);
     const pending   = tasks.filter(t => t.status === 'pending').length;
@@ -56,15 +71,52 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
     const total     = tasks.length;
     const pct       = total ? Math.round((completed / total) * 100) : 0;
     return { group: g, pending, completed, total, pct };
-  }).filter(s => s.total > 0);          // only show groups that have tasks
+  }).filter(s => s.total > 0);
 
-  // Recent completed tasks — sorted newest first via updatedAt
   const recentDone = allTasks
     .filter(t => t.status === 'completed')
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
     .slice(0, 10);
 
   const groupName = id => groups.find(g => g.id === id)?.name || '—';
+
+  function getInitials(nameOrEmail) {
+    return (nameOrEmail || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+  }
+
+  async function loadPendingInvites() {
+    try {
+      const data = await getPendingInvites(school.id);
+      setPendingInvites(data);
+    } catch { /* silent */ }
+  }
+
+  async function handleSendInvite(e) {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviteLoading(true); setInviteError(''); setInviteSuccess('');
+    try {
+      await sendEmailInvite(school.id, inviteEmail.trim(), inviteRole);
+      setInviteSuccess(`Invite sent to ${inviteEmail.trim()}`);
+      setInviteEmail('');
+      loadPendingInvites();
+    } catch (err) {
+      setInviteError(err?.response?.data?.message || 'Failed to send invite.');
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  async function handleCancelInvite(id) {
+    await cancelEmailInvite(id);
+    setPendingInvites(prev => prev.filter(i => i.id !== id));
+  }
+
+  function toggleInvitePanel() {
+    if (!showInvitePanel) loadPendingInvites();
+    setShowInvitePanel(v => !v);
+    setInviteError(''); setInviteSuccess('');
+  }
 
   return (
     <div className="owner-overview">
@@ -73,20 +125,14 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
         <p>{school.name}</p>
       </div>
 
-      {/* ── Active Tasks by Group ── */}
-      {groupStats.length > 0 && (
+      {/* ── Active Tasks ── */}
+      {groupStats.length > 0 ? (
         <div className="overview-section-card">
           <h4 className="overview-section-title">Active Tasks by Group</h4>
           <div className="ov-table-wrap">
             <table className="ov-table">
               <thead>
-                <tr>
-                  <th>Group</th>
-                  <th>Total</th>
-                  <th>Pending</th>
-                  <th>Completed</th>
-                  <th>Progress</th>
-                </tr>
+                <tr><th>Group</th><th>Total</th><th>Pending</th><th>Completed</th><th>Progress</th></tr>
               </thead>
               <tbody>
                 {groupStats.map(({ group, pending, completed, total, pct }) => (
@@ -97,9 +143,7 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
                     <td><span className="ov-badge completed">{completed}</span></td>
                     <td>
                       <div className="ov-prog-wrap">
-                        <div className="ov-prog-bar">
-                          <div className="ov-prog-fill" style={{ width: `${pct}%` }} />
-                        </div>
+                        <div className="ov-prog-bar"><div className="ov-prog-fill" style={{ width: `${pct}%` }} /></div>
                         <span className="ov-prog-pct">{pct}%</span>
                       </div>
                     </td>
@@ -109,13 +153,8 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
             </table>
           </div>
         </div>
-      )}
-
-      {groupStats.length === 0 && (
-        <div className="overview-section-card ov-empty">
-          <span>📋</span>
-          <p>No tasks yet. Create a group and start assigning tasks.</p>
-        </div>
+      ) : (
+        <div className="overview-section-card ov-empty"><span>📋</span><p>No tasks yet.</p></div>
       )}
 
       {/* ── Recent Actions ── */}
@@ -127,15 +166,13 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
           <div className="ov-actions-list">
             {recentDone.map(task => {
               const assignee = getUserById(task.assignedTo);
-              const name     = assignee ? (assignee.name || assignee.email) : 'Someone';
+              const name = assignee ? (assignee.name || assignee.email) : 'Someone';
               return (
                 <div key={task.id} className="ov-action-row">
                   <span className="ov-action-check">✓</span>
                   <div className="ov-action-info">
                     <span className="ov-action-title">{task.title}</span>
-                    <span className="ov-action-meta">
-                      {name} · {groupName(task.groupId)}
-                    </span>
+                    <span className="ov-action-meta">{name} · {groupName(task.groupId)}</span>
                   </div>
                   <span className={`ov-prio-dot prio-${task.priority}`} title={task.priority} />
                 </div>
@@ -145,8 +182,74 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
         )}
       </div>
 
-      {/* ── Staff Members (Owner only) ── */}
-      {isOwner && (
+      {/* ── Invite Management (Owner/Admin only) ── */}
+      {isOwnerOrAdmin && (
+        <div className="overview-section-card">
+          <div className="ov-invite-header" onClick={toggleInvitePanel}>
+            <h4 className="overview-section-title" style={{ margin: 0, border: 0, padding: 0 }}>
+              Invite Members
+            </h4>
+            <span className="ov-invite-toggle">{showInvitePanel ? '▲' : '▼'}</span>
+          </div>
+
+          {showInvitePanel && (
+            <div className="ov-invite-panel">
+              {/* Invite codes */}
+              <div className="ov-codes-row">
+                {[['manager', 'Manager', '🏷'], ['user', 'User', '👤']].map(([key, label, icon]) => (
+                  <div key={key} className="ov-code-card">
+                    <span className="ov-code-label">{icon} {label} Code</span>
+                    <code className="ov-code-val">{codes[key] || '—'}</code>
+                    <button className="ov-code-regen" onClick={() => regenerateCode(school.id, key)} title="Regenerate code">↺</button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Email invite form */}
+              <form className="ov-invite-form" onSubmit={handleSendInvite}>
+                <p className="ov-invite-form-label">Send email invite</p>
+                {inviteError   && <div className="ob-error" style={{ marginBottom: '0.5rem' }}>{inviteError}</div>}
+                {inviteSuccess && <div className="ov-invite-success">{inviteSuccess}</div>}
+                <div className="ov-invite-inputs">
+                  <input
+                    type="email"
+                    className="ov-invite-email"
+                    placeholder="colleague@email.com"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    required
+                  />
+                  <select className="ov-invite-role" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+                    {isOwner && <option value="Admin">Admin</option>}
+                    <option value="Manager">Manager</option>
+                    <option value="User">User</option>
+                  </select>
+                  <button type="submit" className="ov-invite-send" disabled={inviteLoading}>
+                    {inviteLoading ? '…' : 'Send'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Pending invites */}
+              {pendingInvites.length > 0 && (
+                <div className="ov-pending-invites">
+                  <p className="ov-invite-form-label">Pending invites</p>
+                  {pendingInvites.map(inv => (
+                    <div key={inv.id} className="ov-pending-row">
+                      <span className="ov-pending-email">{inv.email}</span>
+                      <span className={`ov-badge ${inv.role.toLowerCase()}`}>{inv.role}</span>
+                      <button className="ov-pending-cancel" onClick={() => handleCancelInvite(inv.id)} title="Cancel invite">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Staff Members (Owner/Admin only) ── */}
+      {isOwnerOrAdmin && (
         <div className="owner-members-card">
           <h4>Staff Members ({getSchoolMembers(school.id).length})</h4>
           <div className="owner-members-list">
@@ -169,7 +272,7 @@ function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getScho
 
 export default function AppShell() {
   const navigate = useNavigate();
-  const { currentUser, getCurrentUserSchools, getMyNotifications, markNotificationAsRead, theme, toggleTheme, loading, getSchoolMembers, getGroupsForUser, getGroupTasks, getUserById } = useApp();
+  const { currentUser, getCurrentUserSchools, getMyNotifications, markNotificationAsRead, theme, toggleTheme, loading } = useApp();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -330,15 +433,15 @@ export default function AppShell() {
 
         <main className="appshell-main">
           {!selectedGroup ? (
-            <SchoolOverview
-              school={school}
-              role={role}
-              getGroupsForUser={getGroupsForUser}
-              getGroupTasks={getGroupTasks}
-              getSchoolMembers={getSchoolMembers}
-              getUserById={getUserById}
-              getInitials={getInitials}
-            />
+            role === 'User' ? (
+              <div className="appshell-empty">
+                <div className="appshell-empty-icon">👈</div>
+                <h3>Select a group to get started</h3>
+                <p>Choose a group from the sidebar to view its chat and tasks.</p>
+              </div>
+            ) : (
+              <SchoolOverview school={school} role={role} />
+            )
           ) : (
             <GroupView key={selectedGroup.id} group={selectedGroup} schoolId={school.id} />
           )}
