@@ -359,10 +359,11 @@ export function AppProvider({ children }) {
 
   async function addTask(groupId, taskData) {
     if (!state.currentUser) return;
-    
+
     // If assignedTo is an array, create multiple tasks
     const assignees = Array.isArray(taskData.assignedTo) ? taskData.assignedTo : [taskData.assignedTo];
-    
+    const todoItems = taskData.todoItems?.filter(i => i.text?.trim()) || undefined;
+
     const results = [];
     for (const uid of assignees) {
       const { data } = await api.post('/tasks', {
@@ -371,6 +372,7 @@ export function AppProvider({ children }) {
         assignedTo: uid || undefined,
         dueDate:    taskData.dueDate || undefined,
         priority:   taskData.priority || 'medium',
+        todoItems:  todoItems?.length ? todoItems : undefined,
       });
       results.push(data);
     }
@@ -397,6 +399,14 @@ export function AppProvider({ children }) {
 
   async function editTask(taskId, updates) {
     const { data } = await api.patch(`/tasks/${taskId}`, updates);
+    setState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId ? data : t),
+    }));
+  }
+
+  async function toggleTaskTodo(taskId, todoId) {
+    const { data } = await api.patch(`/tasks/${taskId}/toggle-todo`, { todoId });
     setState(prev => ({
       ...prev,
       tasks: prev.tasks.map(t => t.id === taskId ? data : t),
@@ -523,7 +533,7 @@ export function AppProvider({ children }) {
       // groups
       addGroup, updateGroup, deleteGroup,
       // tasks
-      addTask, toggleTask, editTask, deleteTask,
+      addTask, toggleTask, editTask, deleteTask, toggleTaskTodo,
       // queries
       getRoleInSchool, getCurrentUserSchools,
       getGroupsForUser, getGroupMembers, getSchoolMembers,

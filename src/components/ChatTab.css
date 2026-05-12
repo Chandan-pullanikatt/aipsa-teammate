@@ -533,6 +533,32 @@
 
 .cmd-add-task-btn:hover { opacity: 0.85; }
 
+/* ── Todo section inside task form ── */
+.cmd-todo-section { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.cmd-todo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cmd-todo-label { font-size: 0.82rem; font-weight: 600; color: var(--text-main); }
+.cmd-todo-opt   { font-size: 0.72rem; font-weight: 400; color: var(--text-muted); }
+
+.cmd-todo-add {
+  background: none;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
+}
+.cmd-todo-add:hover { border-color: var(--primary); background: var(--primary-tint); }
+
 /* ── Image preview ── */
 .img-preview-wrap {
   display: flex;

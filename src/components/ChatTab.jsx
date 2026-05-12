@@ -17,6 +17,7 @@ const COMMANDS = [
 
 // ── Helpers ───────────────────────────────────────────────────
 function genId() { return Math.random().toString(36).slice(2, 9); }
+function todayISO() { return new Date().toISOString().split('T')[0]; }
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -123,7 +124,7 @@ function TodoBubble({ msg, onToggle }) {
 const messageCache = {};
 
 export default function ChatTab({ groupId, schoolId }) {
-  const { currentUser, addTask, toggleTask, getGroupTasks, canCreateTasks, getGroupMembers, getUserById } = useApp();
+  const { currentUser, addTask, toggleTask, getGroupTasks, canCreateTasks, getGroupMembers } = useApp();
   const members = getGroupMembers(groupId);
   const canAdd  = canCreateTasks(schoolId);
 
@@ -157,6 +158,7 @@ export default function ChatTab({ groupId, schoolId }) {
   const [taskAssignee, setTaskAssignee] = useState('');
   const [taskDue,      setTaskDue]      = useState('');
   const [taskPriority, setTaskPriority] = useState('medium');
+  const [taskTodos,    setTaskTodos]    = useState([]);
 
   const pendingTasks = getGroupTasks(groupId).filter(t => t.status === 'pending');
 
@@ -362,7 +364,7 @@ export default function ChatTab({ groupId, schoolId }) {
     const lines = text.split('\n');
     lines[lines.length - 1] = '';
     setText(lines.join('\n').trimEnd());
-    if (command.id === 'task') { setCmd('tasks'); setShowTaskForm(false); return; }
+    if (command.id === 'task') { setCmd('tasks'); setShowTaskForm(false); setTaskDue(todayISO()); setTaskTodos([]); return; }
     setCmd(command.id);
     if (command.id === 'image') imageInputRef.current?.click();
     if (command.id === 'announce') { setAnnounceMode(true); setCmd(null); textRef.current?.focus(); }
@@ -372,7 +374,7 @@ export default function ChatTab({ groupId, schoolId }) {
     setCmd(null);
     setAnnounceMode(false);
     setShowTaskForm(false);
-    setTaskTitle(''); setTaskAssignee(''); setTaskDue(''); setTaskPriority('medium');
+    setTaskTitle(''); setTaskAssignee(''); setTaskDue(''); setTaskPriority('medium'); setTaskTodos([]);
     setPollQ(''); setPollOpts(['', '']);
     setTodoTitle(''); setTodoItems(['', '']);
     setImgPreview(null); setImgCaption(''); setImgError('');
@@ -401,12 +403,16 @@ export default function ChatTab({ groupId, schoolId }) {
     e.preventDefault();
     if (!taskTitle.trim()) return;
     const assigneeName = members.find(m => m.id === taskAssignee)?.name || '';
-    await addTask(groupId, { title: taskTitle.trim(), assignedTo: taskAssignee, dueDate: taskDue, priority: taskPriority });
+    const todos = taskTodos.filter(i => i.text.trim());
+    await addTask(groupId, { title: taskTitle.trim(), assignedTo: taskAssignee, dueDate: taskDue, priority: taskPriority, todoItems: todos.length ? todos : undefined });
     await sendMessage(taskTitle.trim(), { type: 'task', taskTitle: taskTitle.trim(), taskAssignee: assigneeName });
-    // Go back to task list within the panel
-    setTaskTitle(''); setTaskAssignee(''); setTaskDue(''); setTaskPriority('medium');
+    setTaskTitle(''); setTaskAssignee(''); setTaskDue(todayISO()); setTaskPriority('medium'); setTaskTodos([]);
     setShowTaskForm(false);
   }
+
+  function addChatTodo()              { setTaskTodos(t => [...t, { id: genId(), text: '', done: false }]); }
+  function updateChatTodo(id, text)   { setTaskTodos(t => t.map(i => i.id === id ? { ...i, text } : i)); }
+  function removeChatTodo(id)         { setTaskTodos(t => t.filter(i => i.id !== id)); }
 
   // ── Image upload ──────────────────────────────────────────
 
@@ -575,13 +581,30 @@ export default function ChatTab({ groupId, schoolId }) {
                   <option value="">Assign to…</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
                 </select>
-                <input type="date" className="cmd-select" value={taskDue} onChange={e => setTaskDue(e.target.value)} />
+                <input type="date" className="cmd-select" value={taskDue} min={todayISO()} onChange={e => setTaskDue(e.target.value)} />
                 <select className="cmd-select" value={taskPriority} onChange={e => setTaskPriority(e.target.value)}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                 </select>
               </div>
+
+              {/* Optional to-do list */}
+              <div className="cmd-todo-section">
+                <div className="cmd-todo-header">
+                  <span className="cmd-todo-label">To-Do List <span className="cmd-todo-opt">(optional)</span></span>
+                  <button type="button" className="cmd-todo-add" onClick={addChatTodo}>+ Add Item</button>
+                </div>
+                {taskTodos.map((item, idx) => (
+                  <div key={item.id} className="cmd-opt-row">
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>{idx + 1}.</span>
+                    <input className="cmd-input" placeholder={`Item ${idx + 1}`} value={item.text}
+                      onChange={e => updateChatTodo(item.id, e.target.value)} maxLength={200} />
+                    <button type="button" className="cmd-opt-del" onClick={() => removeChatTodo(item.id)}>✕</button>
+                  </div>
+                ))}
+              </div>
+
               <div className="cmd-actions">
                 <button type="button" className="cmd-cancel" onClick={() => setShowTaskForm(false)}>← Back</button>
                 <button type="submit" className="cmd-submit" disabled={!taskTitle.trim()}>Create Task</button>

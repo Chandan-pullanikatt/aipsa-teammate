@@ -125,6 +125,95 @@
 .task-action-btn:hover { background: var(--surface-hover); }
 .task-action-btn.task-delete-btn.confirming { background: var(--danger-tint); }
 
+/* ── Todo badge & progress ── */
+.task-todo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-tint);
+  border: 1px solid var(--primary-tint-bd);
+  border-radius: 100px;
+  padding: 0.1rem 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.task-todo-badge:hover { background: var(--primary); color: #fff; }
+
+.task-todo-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.task-todo-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.task-todo-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.task-todo-pct {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 28px;
+  text-align: right;
+}
+
+/* ── Expandable todo list ── */
+.task-todo-list {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.task-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-main);
+}
+
+.task-todo-item.done span { text-decoration: line-through; color: var(--text-muted); }
+
+.task-todo-check {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  color: #fff;
+  transition: background 0.12s, border-color 0.12s;
+  font-family: inherit;
+  padding: 0;
+}
+.task-todo-check.checked { background: var(--success); border-color: var(--success); }
+.task-todo-check:hover:not(.checked):not(:disabled) { border-color: var(--primary); }
+.task-todo-check:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Inline delete confirm ── */
 .task-delete-confirm {
   display: flex;

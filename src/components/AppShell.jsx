@@ -42,9 +42,134 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
+function SchoolOverview({ school, role, getGroupsForUser, getGroupTasks, getSchoolMembers, getUserById, getInitials }) {
+  const isOwner = role === 'Owner';
+
+  const groups = getGroupsForUser(school.id);
+  const allTasks = groups.flatMap(g => getGroupTasks(g.id));
+
+  // Per-group task stats
+  const groupStats = groups.map(g => {
+    const tasks     = getGroupTasks(g.id);
+    const pending   = tasks.filter(t => t.status === 'pending').length;
+    const completed = tasks.filter(t => t.status === 'completed').length;
+    const total     = tasks.length;
+    const pct       = total ? Math.round((completed / total) * 100) : 0;
+    return { group: g, pending, completed, total, pct };
+  }).filter(s => s.total > 0);          // only show groups that have tasks
+
+  // Recent completed tasks — sorted newest first via updatedAt
+  const recentDone = allTasks
+    .filter(t => t.status === 'completed')
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    .slice(0, 10);
+
+  const groupName = id => groups.find(g => g.id === id)?.name || '—';
+
+  return (
+    <div className="owner-overview">
+      <div className="owner-overview-header">
+        <h3>School Overview</h3>
+        <p>{school.name}</p>
+      </div>
+
+      {/* ── Active Tasks by Group ── */}
+      {groupStats.length > 0 && (
+        <div className="overview-section-card">
+          <h4 className="overview-section-title">Active Tasks by Group</h4>
+          <div className="ov-table-wrap">
+            <table className="ov-table">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Total</th>
+                  <th>Pending</th>
+                  <th>Completed</th>
+                  <th>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupStats.map(({ group, pending, completed, total, pct }) => (
+                  <tr key={group.id}>
+                    <td className="ov-group-name">{group.name}</td>
+                    <td>{total}</td>
+                    <td><span className="ov-badge pending">{pending}</span></td>
+                    <td><span className="ov-badge completed">{completed}</span></td>
+                    <td>
+                      <div className="ov-prog-wrap">
+                        <div className="ov-prog-bar">
+                          <div className="ov-prog-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="ov-prog-pct">{pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {groupStats.length === 0 && (
+        <div className="overview-section-card ov-empty">
+          <span>📋</span>
+          <p>No tasks yet. Create a group and start assigning tasks.</p>
+        </div>
+      )}
+
+      {/* ── Recent Actions ── */}
+      <div className="overview-section-card">
+        <h4 className="overview-section-title">Recent Actions</h4>
+        {recentDone.length === 0 ? (
+          <p className="ov-no-actions">No completed tasks yet.</p>
+        ) : (
+          <div className="ov-actions-list">
+            {recentDone.map(task => {
+              const assignee = getUserById(task.assignedTo);
+              const name     = assignee ? (assignee.name || assignee.email) : 'Someone';
+              return (
+                <div key={task.id} className="ov-action-row">
+                  <span className="ov-action-check">✓</span>
+                  <div className="ov-action-info">
+                    <span className="ov-action-title">{task.title}</span>
+                    <span className="ov-action-meta">
+                      {name} · {groupName(task.groupId)}
+                    </span>
+                  </div>
+                  <span className={`ov-prio-dot prio-${task.priority}`} title={task.priority} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Staff Members (Owner only) ── */}
+      {isOwner && (
+        <div className="owner-members-card">
+          <h4>Staff Members ({getSchoolMembers(school.id).length})</h4>
+          <div className="owner-members-list">
+            {getSchoolMembers(school.id).map(({ user, role: r }) => (
+              <div key={user.id} className="owner-member-row">
+                <div className="omr-avatar">{getInitials(user.name || user.email)}</div>
+                <div className="omr-info">
+                  <span className="omr-name">{user.name || user.email}</span>
+                  <span className={`omr-role ${r.toLowerCase()}`}>{r}</span>
+                  <span className="omr-email">{user.email}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AppShell() {
   const navigate = useNavigate();
-  const { currentUser, getCurrentUserSchools, getMyNotifications, markNotificationAsRead, theme, toggleTheme, loading, getSchoolMembers } = useApp();
+  const { currentUser, getCurrentUserSchools, getMyNotifications, markNotificationAsRead, theme, toggleTheme, loading, getSchoolMembers, getGroupsForUser, getGroupTasks, getUserById } = useApp();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -205,37 +330,15 @@ export default function AppShell() {
 
         <main className="appshell-main">
           {!selectedGroup ? (
-            <div className="appshell-empty">
-              {(role === 'Owner' || role === 'Admin') ? (
-                <div className="owner-overview">
-                  <div className="owner-overview-header">
-                    <h3>School Overview</h3>
-                    <p>Manage your staff and groups from the sidebar or see recent members below.</p>
-                  </div>
-                  <div className="owner-members-card">
-                    <h4>Staff Members ({getSchoolMembers(school.id).length})</h4>
-                    <div className="owner-members-list">
-                      {getSchoolMembers(school.id).map(({ user, role }) => (
-                        <div key={user.id} className="owner-member-row">
-                          <div className="omr-avatar">{getInitials(user.name || user.email)}</div>
-                          <div className="omr-info">
-                            <span className="omr-name">{user.name || user.email}</span>
-                            <span className={`omr-role ${role.toLowerCase()}`}>{role}</span>
-                            <span className="omr-email">{user.email}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="appshell-empty-icon">👈</div>
-                  <h3>Select a group to get started</h3>
-                  <p>Choose a group from the sidebar to view its chat, tasks, and reports.</p>
-                </>
-              )}
-            </div>
+            <SchoolOverview
+              school={school}
+              role={role}
+              getGroupsForUser={getGroupsForUser}
+              getGroupTasks={getGroupTasks}
+              getSchoolMembers={getSchoolMembers}
+              getUserById={getUserById}
+              getInitials={getInitials}
+            />
           ) : (
             <GroupView key={selectedGroup.id} group={selectedGroup} schoolId={school.id} />
           )}
